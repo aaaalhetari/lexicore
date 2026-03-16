@@ -10,12 +10,14 @@
     </div>
 
     <!-- SCREENS -->
-    <Transition name="fade" mode="out-in">
-      <HomeScreen     v-if="screen === 'home'"     @start="goTo('session')" />
-      <SessionScreen  v-else-if="screen === 'session'"  @end="goTo('home')" />
-      <SettingsScreen v-else-if="screen === 'settings'" @back="goTo('home')" />
-      <WordListScreen v-else-if="screen === 'words'"    @back="goTo('home')" />
-    </Transition>
+    <div class="content">
+      <Transition name="fade" mode="out-in">
+        <HomeScreen     v-if="screen === 'home'"     @start="goTo('session')" />
+        <SessionScreen  v-else-if="screen === 'session'"  @end="goTo('home')" />
+        <SettingsScreen v-else-if="screen === 'settings'" @back="goTo('home')" />
+        <WordListScreen v-else-if="screen === 'words'"    @back="goTo('home')" />
+      </Transition>
+    </div>
   </div>
 </template>
 
@@ -35,6 +37,19 @@ onMounted(() => { loadFromStorage() })
 </script>
 
 <style scoped>
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .header {
   display: flex; align-items: center; justify-content: space-between;
   padding: 20px 0 32px;

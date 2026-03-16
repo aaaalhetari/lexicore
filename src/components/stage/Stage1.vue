@@ -59,7 +59,7 @@ function answer(id) {
   background: var(--surface2); border: 1.5px solid var(--border);
   border-radius: var(--radius-sm); padding: 16px 18px;
   cursor: pointer; transition: all 0.2s; text-align: left;
-  font-family: 'JetBrains Mono', monospace; font-size: 15px; color: var(--text);
+  font-family: 'JetBrains Mono', monospace; font-size: 1rem; color: var(--text);
 }
 .choice-btn:hover:not(:disabled) { border-color: var(--gold); background: var(--gold-dim); }
 .choice-btn.correct { border-color: var(--green) !important; background: var(--green-dim) !important; color: var(--green); }

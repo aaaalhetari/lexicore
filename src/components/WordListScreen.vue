@@ -106,11 +106,12 @@ function saveAndBack() {
   border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
 }
 .add-form h3 { margin-bottom: 16px; font-size: 15px; }
+.add-form h3 { margin-bottom: 16px; font-size: 1.1rem; }
 .form-grid { display: grid; gap: 10px; }
 .form-input {
   background: var(--surface2); border: 1px solid var(--border);
   color: var(--text); border-radius: var(--radius-sm);
-  padding: 10px 14px; font-size: 14px; outline: none; width: 100%;
+  padding: 10px 14px; font-size: 1rem; outline: none; width: 100%;
   font-family: 'DM Sans', sans-serif;
 }
 .form-input:focus { border-color: var(--gold); }
@@ -123,10 +124,10 @@ function saveAndBack() {
   border-radius: var(--radius-sm); padding: 14px 18px;
   display: flex; align-items: center; justify-content: space-between;
 }
-.w-name { font-family: 'JetBrains Mono', monospace; font-size: 15px; color: var(--gold); }
-.w-def  { font-size: 13px; color: var(--text2); margin-top: 3px; }
+.w-name { font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; color: var(--gold); }
+.w-def  { font-size: 0.95rem; color: var(--text2); margin-top: 3px; }
 .word-status {
-  padding: 4px 10px; border-radius: 100px; font-size: 11px;
+  padding: 4px 10px; border-radius: 100px; font-size: 0.8rem;
   font-family: 'JetBrains Mono', monospace; white-space: nowrap;
 }
 .ws-waiting  { background: var(--surface2); color: var(--text3); }

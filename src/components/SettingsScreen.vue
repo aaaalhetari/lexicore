@@ -118,7 +118,7 @@ function onUpload(e) {
 }
 .nav-tab {
   flex: 1; padding: 9px; border-radius: var(--radius-sm);
-  text-align: center; font-size: 13px; cursor: pointer;
+  text-align: center; font-size: 0.95rem; cursor: pointer;
   transition: all 0.2s; color: var(--text2); border: none; background: none;
   font-family: 'DM Sans', sans-serif;
 }
@@ -126,7 +126,7 @@ function onUpload(e) {
 
 .settings-section { margin-bottom: 28px; }
 .settings-section h3 {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;
   color: var(--text3); font-family: 'JetBrains Mono', monospace;
   margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
 }
@@ -135,12 +135,12 @@ function onUpload(e) {
   padding: 14px 0; border-bottom: 1px solid var(--border);
 }
 .setting-row:last-child { border-bottom: none; }
-.setting-label { font-size: 14px; }
-.setting-desc { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.setting-label { font-size: 1rem; }
+.setting-desc { font-size: 0.9rem; color: var(--text3); margin-top: 2px; }
 .setting-input {
   background: var(--surface2); border: 1px solid var(--border);
   color: var(--text); border-radius: var(--radius-sm); padding: 8px 12px;
-  font-family: 'JetBrains Mono', monospace; font-size: 14px; width: 72px;
+  font-family: 'JetBrains Mono', monospace; font-size: 1rem; width: 5.5rem;
   text-align: center; outline: none;
 }
 .setting-input:focus { border-color: var(--gold); }

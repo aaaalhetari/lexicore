@@ -162,13 +162,13 @@ function next() {
 .progress-header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
 .progress-bar-wrap { flex: 1; background: var(--surface2); border-radius: 100px; height: 6px; overflow: hidden; }
 .progress-bar { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold2)); border-radius: 100px; transition: width 0.4s ease; }
-.progress-text { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text3); white-space: nowrap; }
+.progress-text { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text3); white-space: nowrap; }
 
 .word-badge {
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--surface2); border: 1px solid var(--border);
   border-radius: 100px; padding: 6px 14px; margin-bottom: 4px;
-  font-size: 12px; font-family: 'JetBrains Mono', monospace; color: var(--text2);
+  font-size: 0.85rem; font-family: 'JetBrains Mono', monospace; color: var(--text2);
 }
 .badge-cycle { color: var(--gold); }
 .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); }
@@ -179,7 +179,7 @@ function next() {
 .counter-pill {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 100px; padding: 5px 12px; font-size: 12px;
+  border-radius: 100px; padding: 5px 12px; font-size: 0.85rem;
   font-family: 'JetBrains Mono', monospace; color: var(--text2); margin-bottom: 20px;
 }
 .counter-dots { display: flex; gap: 4px; }
@@ -188,7 +188,7 @@ function next() {
 
 .feedback {
   padding: 14px 20px; border-radius: var(--radius-sm);
-  font-size: 14px; font-weight: 500; text-align: center;
+  font-size: 1rem; font-weight: 500; text-align: center;
   margin-top: 16px;
 }
 .feedback.correct { background: var(--green-dim); color: var(--green); border: 1px solid rgba(76,175,130,0.3); }
@@ -197,7 +197,7 @@ function next() {
 .next-btn {
   width: 100%; padding: 16px; background: var(--gold);
   color: #0e0e10; border: none; border-radius: var(--radius-sm);
-  font-size: 15px; font-weight: 600; cursor: pointer;
+  font-size: 1.05rem; font-weight: 600; cursor: pointer;
   transition: all 0.2s; margin-top: 14px;
   font-family: 'DM Sans', sans-serif;
 }
@@ -214,20 +214,20 @@ function next() {
   50%      { box-shadow: 0 0 0 12px rgba(201,168,76,0); }
 }
 .mastered-card .trophy { font-size: 48px; margin-bottom: 12px; }
-.mastered-card h2 { font-family: 'Fraunces', serif; font-size: 24px; color: var(--gold2); margin-bottom: 8px; }
-.mastered-card p { color: var(--text2); font-size: 14px; }
+.mastered-card h2 { font-family: 'Fraunces', serif; font-size: 1.7rem; color: var(--gold2); margin-bottom: 8px; }
+.mastered-card p { color: var(--text2); font-size: 1rem; }
 
 .idle-msg { text-align: center; padding: 60px 0; }
-.idle-msg h2 { font-family: 'Fraunces', serif; font-size: 24px; color: var(--gold2); margin-bottom: 12px; }
+.idle-msg h2 { font-family: 'Fraunces', serif; font-size: 1.7rem; color: var(--gold2); margin-bottom: 12px; }
 .idle-msg p { color: var(--text2); }
 
 .session-end { text-align: center; padding: 40px 0; }
-.session-end h2 { font-family: 'Fraunces', serif; font-size: 30px; color: var(--gold2); margin-bottom: 12px; }
+.session-end h2 { font-family: 'Fraunces', serif; font-size: 2.1rem; color: var(--gold2); margin-bottom: 12px; }
 .session-end p { color: var(--text2); margin-bottom: 28px; }
 .end-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 32px; }
 .end-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 20px 12px; }
-.end-stat .num { font-family: 'JetBrains Mono', monospace; font-size: 28px; color: var(--gold); }
-.end-stat .lbl { font-size: 12px; color: var(--text3); margin-top: 4px; }
+.end-stat .num { font-family: 'JetBrains Mono', monospace; font-size: 1.9rem; color: var(--gold); }
+.end-stat .lbl { font-size: 0.85rem; color: var(--text3); margin-top: 4px; }
 
 .icon-btn {
   background: var(--surface2); border: 1px solid var(--border);

@@ -17,9 +17,18 @@
   --blue: #5c9ee0;
   --radius: 12px;
   --radius-sm: 8px;
+
+  /* Typography scale (responsive) */
+  --fs-body: clamp(18px, 1.25vw + 12px, 32px);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+html,
+body,
+#app {
+  height: 100%;
+}
 
 body {
   background: var(--bg);
@@ -28,7 +37,9 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
+  /* Base font scales with screen size */
+  font-size: var(--fs-body);
 }
 
 body::before {
@@ -42,17 +53,44 @@ body::before {
 
 .app {
   width: 100%;
-  max-width: 680px;
-  padding: 24px 20px 80px;
+  max-width: 100%;
+  min-height: 100vh;
+  padding: 16px 12px calc(80px + env(safe-area-inset-bottom));
+  margin: 0 auto;
   position: relative;
   z-index: 1;
+}
+
+/* Base card surface used across stages */
+.card {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 18px;
+  margin-bottom: 14px;
+}
+
+.card .definition-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  font-family: 'JetBrains Mono', monospace;
+  margin-bottom: 10px;
+}
+
+.card .definition-text {
+  font-size: 1.15rem;
+  line-height: 1.65;
+  color: var(--text);
 }
 
 /* Buttons */
 .btn {
   padding: 12px 24px;
   border-radius: var(--radius-sm);
-  font-size: 14px;
+  font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -68,16 +106,45 @@ body::before {
 /* Sticky bottom bar */
 .sticky-bottom {
   position: fixed;
-  bottom: 0; left: 50%;
-  transform: translateX(-50%);
-  width: 100%; max-width: 680px;
+  bottom: 0;
+  left: 0;
+  transform: none;
+  width: 100%;
+  max-width: 100%;
   background: var(--bg);
   border-top: 1px solid var(--border);
-  padding: 14px 20px;
+  padding: 10px 12px;
   display: flex; gap: 12px;
   z-index: 100;
 }
 .sticky-bottom .btn { flex: 1; }
+
+/* Responsive typography & layout */
+@media (min-width: 768px) {
+  .app {
+    padding: 24px 32px calc(96px + env(safe-area-inset-bottom));
+  }
+  .sticky-bottom {
+    padding: 14px 24px;
+  }
+  .card {
+    padding: 26px 26px;
+    margin-bottom: 18px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .app {
+    padding: 32px 64px calc(120px + env(safe-area-inset-bottom));
+  }
+  .sticky-bottom {
+    padding: 16px 64px;
+  }
+  .card {
+    padding: 34px 40px;
+    margin-bottom: 22px;
+  }
+}
 
 /* Fade transition */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }

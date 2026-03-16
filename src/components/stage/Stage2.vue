@@ -41,7 +41,8 @@ function answer(val) {
 <style scoped>
 .sentence-text {
   font-family: 'DM Sans', sans-serif;
-  font-size: 18px; line-height: 1.7; color: var(--text);
+  font-size: clamp(1.35rem, 1.2vw + 1rem, 2.2rem);
+  line-height: 1.7; color: var(--text);
   margin-bottom: 16px; font-weight: 400;
 }
 :deep(.blank) {
@@ -50,7 +51,8 @@ function answer(val) {
   margin: 0 6px; position: relative; top: -4px;
 }
 .meaning-text {
-  font-size: 15px; color: var(--text); line-height: 1.65;
+  font-size: clamp(1.05rem, 0.6vw + 0.95rem, 1.5rem);
+  color: var(--text); line-height: 1.65;
   background: var(--surface2); border-radius: var(--radius-sm);
   padding: 14px 18px; border-left: 3px solid var(--gold);
   font-family: 'DM Sans', sans-serif;
@@ -58,7 +60,7 @@ function answer(val) {
 .show-answer-btn {
   width: 100%; padding: 14px; background: var(--surface2);
   border: 1.5px dashed var(--border); color: var(--text2);
-  border-radius: var(--radius-sm); font-size: 14px; cursor: pointer;
+  border-radius: var(--radius-sm); font-size: 1rem; cursor: pointer;
   transition: all 0.2s; margin-top: 20px;
   font-family: 'DM Sans', sans-serif;
 }
@@ -69,7 +71,8 @@ function answer(val) {
   text-align: center;
 }
 .answer-word {
-  font-family: 'Fraunces', serif; font-size: 28px;
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.9rem, 1.4vw + 1.4rem, 3rem);
   color: var(--gold2); margin-bottom: 16px; letter-spacing: 0.5px;
 }
 .judge-btns { display: flex; gap: 12px; justify-content: center; }

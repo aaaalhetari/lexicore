@@ -38,12 +38,13 @@ function answer(chosen) {
 <style scoped>
 .stage3-sentence {
   font-family: 'DM Sans', sans-serif;
-  font-size: 19px; line-height: 1.7; color: var(--text);
+  font-size: clamp(1.4rem, 1.2vw + 1rem, 2.3rem);
+  line-height: 1.7; color: var(--text);
   margin-bottom: 24px; font-weight: 400;
 }
 .tf-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .tf-btn {
-  padding: 18px; border-radius: var(--radius-sm); font-size: 15px;
+  padding: 18px; border-radius: var(--radius-sm); font-size: 1rem;
   font-weight: 500; cursor: pointer; transition: all 0.2s; border: 1.5px solid;
   font-family: 'DM Sans', sans-serif;
 }

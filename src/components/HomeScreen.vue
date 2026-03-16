@@ -69,12 +69,12 @@ const stats = computed(() => getStats())
 }
 .home-hero h1 {
   font-family: 'Fraunces', serif;
-  font-size: 42px; font-weight: 700;
+  font-size: clamp(2.2rem, 2.4vw + 1.2rem, 3.8rem); font-weight: 700;
   background: linear-gradient(135deg, var(--gold2), var(--gold));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   line-height: 1.2; margin-bottom: 12px;
 }
-.home-hero p { color: var(--text2); font-size: 15px; line-height: 1.6; max-width: 400px; margin: 0 auto; }
+.home-hero p { color: var(--text2); font-size: 1.05rem; line-height: 1.6; max-width: 60ch; margin: 0 auto; }
 
 .stats-bar {
   background: var(--surface); border: 1px solid var(--border);
@@ -84,8 +84,8 @@ const stats = computed(() => getStats())
 }
 .stats-bar-2 { grid-template-columns: 1fr 1fr; }
 .stat-item { text-align: center; }
-.stat-num { font-family: 'JetBrains Mono', monospace; font-size: 22px; font-weight: 500; color: var(--gold); }
-.stat-label { font-size: 11px; color: var(--text3); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-num { font-family: 'JetBrains Mono', monospace; font-size: 1.45rem; font-weight: 500; color: var(--gold); }
+.stat-label { font-size: 0.75rem; color: var(--text3); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
 
 .home-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 24px; }
 .home-card {
@@ -94,7 +94,7 @@ const stats = computed(() => getStats())
   cursor: pointer; transition: all 0.25s; text-align: center;
 }
 .home-card:hover { border-color: var(--gold); background: var(--surface2); transform: translateY(-2px); }
-.home-card .card-icon { font-size: 28px; margin-bottom: 12px; }
-.home-card h3 { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
-.home-card p { font-size: 13px; color: var(--text2); }
+.home-card .card-icon { font-size: 2rem; margin-bottom: 12px; }
+.home-card h3 { font-size: 1.05rem; font-weight: 500; margin-bottom: 6px; }
+.home-card p { font-size: 0.95rem; color: var(--text2); }
 </style>
