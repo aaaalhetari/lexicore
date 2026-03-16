@@ -11,20 +11,16 @@ export async function getCurrentUser() {
   return user
 }
 
-/** Sign in with email + password */
-export async function signIn(email, password) {
+/** Sign in with GitHub OAuth */
+export async function signInWithGitHub() {
   if (!hasSupabase()) throw new Error('Supabase not configured')
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'github',
+    options: { redirectTo },
+  })
   if (error) throw error
-  return data.user
-}
-
-/** Sign up with email + password */
-export async function signUp(email, password) {
-  if (!hasSupabase()) throw new Error('Supabase not configured')
-  const { data, error } = await supabase.auth.signUp({ email, password })
-  if (error) throw error
-  return data.user
+  if (data?.url) window.location.href = data.url
 }
 
 /** Sign out */

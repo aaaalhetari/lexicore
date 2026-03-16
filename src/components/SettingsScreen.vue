@@ -55,17 +55,14 @@
         <p class="sync-hint">Sync requires Supabase. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable.</p>
       </template>
       <template v-else-if="user">
-        <p class="sync-status">Signed in as <strong>{{ user.email }}</strong></p>
+        <p class="sync-status">Signed in as <strong>{{ user.user_metadata?.user_name || user.email || 'GitHub user' }}</strong></p>
         <button class="btn btn-secondary" @click="handleSignOut">Sign out</button>
       </template>
       <template v-else>
         <div class="auth-form">
-          <input v-model="authEmail" type="email" placeholder="Email" class="form-input">
-          <input v-model="authPassword" type="password" placeholder="Password" class="form-input">
-          <div class="auth-actions">
-            <button class="btn btn-primary" @click="handleSignIn">Sign in</button>
-            <button class="btn btn-secondary" @click="handleSignUp">Sign up</button>
-          </div>
+          <button class="btn btn-primary github-btn" @click="handleSignInWithGitHub">
+            Sign in with GitHub
+          </button>
           <p v-if="authError" class="auth-error">{{ authError }}</p>
         </div>
       </template>
@@ -83,15 +80,13 @@
 import { ref, reactive, onMounted } from 'vue'
 import { getSettings, updateSetting, updateCycleSetting, snapshotSettings, restoreSettings, importJSON, downloadJSON } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
-import { getCurrentUser, signIn, signUp, signOut } from '../store/sync.js'
+import { getCurrentUser, signInWithGitHub, signOut } from '../store/sync.js'
 
 const emit = defineEmits(['back'])
 const tab = ref('general')
 const snapshot = ref(null)
 const hasSync = hasSupabase()
 const user = ref(null)
-const authEmail = ref('')
-const authPassword = ref('')
 const authError = ref('')
 
 onMounted(async () => {
@@ -146,23 +141,12 @@ function onUpload(e) {
   reader.readAsText(file)
 }
 
-async function handleSignIn() {
+async function handleSignInWithGitHub() {
   authError.value = ''
   try {
-    await signIn(authEmail.value, authPassword.value)
-    window.location.reload()
+    await signInWithGitHub()
   } catch (e) {
     authError.value = e.message || 'Sign in failed'
-  }
-}
-
-async function handleSignUp() {
-  authError.value = ''
-  try {
-    await signUp(authEmail.value, authPassword.value)
-    authError.value = 'Check your email to confirm, then sign in.'
-  } catch (e) {
-    authError.value = e.message || 'Sign up failed'
   }
 }
 
@@ -215,6 +199,7 @@ async function handleSignOut() {
 .sync-hint { font-size: 0.85rem; color: var(--text3); }
 .sync-status { margin-bottom: 12px; }
 .auth-form { display: flex; flex-direction: column; gap: 10px; max-width: 280px; }
+.github-btn { width: 100%; }
 .auth-form .form-input {
   background: var(--surface2); border: 1px solid var(--border);
   color: var(--text); border-radius: var(--radius-sm); padding: 10px 14px;
