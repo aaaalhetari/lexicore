@@ -7,7 +7,7 @@
 
     <!-- ALL DONE TODAY -->
     <div v-else-if="phase === 'done_today'" class="idle-msg">
-      <div style="font-size:48px;margin-bottom:16px">🌙</div>
+      <div class="big-emoji">🌙</div>
       <h2>All done for today!</h2>
       <p>Come back tomorrow to continue with the next cycle.</p>
       <button class="btn btn-primary" style="margin-top:24px;width:100%" @click="$emit('end')">Back Home</button>
@@ -15,7 +15,7 @@
 
     <!-- SESSION END -->
     <div v-else-if="phase === 'end'" class="session-end">
-      <div style="font-size:52px;margin-bottom:16px">✨</div>
+      <div class="big-emoji">✨</div>
       <h2>Session Complete</h2>
       <p>All words for today are done. Come back tomorrow!</p>
       <div class="end-stats">
@@ -34,7 +34,7 @@
       <div class="trophy">🏆</div>
       <h2>{{ masteredWord }}</h2>
       <p>Fully mastered after 3 cycles. This word is yours forever.</p>
-      <p v-if="remaining > 0" style="margin-top:8px;color:var(--gold);font-size:13px">{{ remaining }} word{{ remaining !== 1 ? 's' : '' }} remaining</p>
+      <p v-if="remaining > 0" class="remaining-note">{{ remaining }} word{{ remaining !== 1 ? 's' : '' }} remaining</p>
       <button class="next-btn" style="display:block;margin-top:20px" @click="next">Continue →</button>
     </div>
 
@@ -66,11 +66,11 @@
 
       <!-- Stage Component -->
       <Transition name="fade" mode="out-in">
-        <Stage1 v-if="currentWord.stage === 1" :key="currentWord.id + '-s1-' + questionKey"
+        <Stage1 v-if="currentWord?.stage === 1" :key="currentWord.id + '-s1-' + questionKey"
           :word="currentWord" :distractorPool="distractorPool" @answered="onAnswered" />
-        <Stage2 v-else-if="currentWord.stage === 2" :key="currentWord.id + '-s2-' + questionKey"
+        <Stage2 v-else-if="currentWord?.stage === 2" :key="currentWord.id + '-s2-' + questionKey"
           :word="currentWord" @answered="onAnswered" />
-        <Stage3 v-else-if="currentWord.stage === 3" :key="currentWord.id + '-s3-' + questionKey"
+        <Stage3 v-else-if="currentWord?.stage === 3" :key="currentWord.id + '-s3-' + questionKey"
           :word="currentWord" :useCorrect="s3UseCorrect" @answered="onAnswered" />
       </Transition>
 
@@ -118,16 +118,17 @@ const required = computed(() => {
 
 const dotsCount = computed(() => Math.min(required.value, 8))
 
-onMounted(() => {
-  const result = startSession()
+onMounted(async () => {
+  const result = await startSession()
   if (result === 'done_today') { phase.value = 'done_today'; return }
-  if (result === 'no_words')   { phase.value = 'done_today'; return }
+  if (result === 'no_words') { phase.value = 'done_today'; return }
   if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
   phase.value = 'question'
 })
 
-function onAnswered(isCorrect) {
-  const result = handleAnswer(isCorrect)
+async function onAnswered(isCorrect) {
+  const result = await handleAnswer(isCorrect)
+  if (!result) return
   switch (result.type) {
     case 'correct':
       feedback.value = { type: 'correct', text: `✅ Correct! ${result.count}/${result.required}` }
@@ -159,7 +160,7 @@ function next() {
 </script>
 
 <style scoped>
-.progress-header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+.progress-header { display: flex; align-items: center; gap: var(--sp); margin-bottom: calc(var(--sp) * 1.6); }
 .progress-bar-wrap { flex: 1; background: var(--surface2); border-radius: 100px; height: 6px; overflow: hidden; }
 .progress-bar { height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold2)); border-radius: 100px; transition: width 0.4s ease; }
 .progress-text { font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: var(--text3); white-space: nowrap; }
@@ -167,11 +168,11 @@ function next() {
 .word-badge {
   display: inline-flex; align-items: center; gap: 8px;
   background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 100px; padding: 6px 14px; margin-bottom: 4px;
+  border-radius: 100px; padding: calc(var(--sp) * 0.45) calc(var(--sp) * 0.9); margin-bottom: 4px;
   font-size: 0.85rem; font-family: 'JetBrains Mono', monospace; color: var(--text2);
 }
 .badge-cycle { color: var(--gold); }
-.badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); }
+.badge-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--text3); }
 .badge-dot.s1 { background: var(--blue); }
 .badge-dot.s2 { background: var(--gold); }
 .badge-dot.s3 { background: var(--green); }
@@ -179,15 +180,16 @@ function next() {
 .counter-pill {
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 100px; padding: 5px 12px; font-size: 0.85rem;
+  border-radius: 100px; padding: calc(var(--sp) * 0.35) calc(var(--sp) * 0.8); font-size: 0.85rem;
   font-family: 'JetBrains Mono', monospace; color: var(--text2); margin-bottom: 20px;
 }
 .counter-dots { display: flex; gap: 4px; }
-.counter-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--surface3); transition: background 0.3s; }
+.counter-dot { width: 0.65rem; height: 0.65rem; border-radius: 50%; background: var(--surface3); transition: background 0.3s; }
 .counter-dot.filled { background: var(--gold); }
 
 .feedback {
-  padding: 14px 20px; border-radius: var(--radius-sm);
+  padding: calc(var(--sp) * 0.9) calc(var(--sp) * 1.2);
+  border-radius: var(--radius-sm);
   font-size: 1rem; font-weight: 500; text-align: center;
   margin-top: 16px;
 }
@@ -195,7 +197,9 @@ function next() {
 .feedback.wrong   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(224,92,92,0.3); }
 
 .next-btn {
-  width: 100%; padding: 16px; background: var(--gold);
+  width: 100%;
+  padding: calc(var(--sp) * 1.15);
+  background: var(--gold);
   color: #0e0e10; border: none; border-radius: var(--radius-sm);
   font-size: 1.05rem; font-weight: 600; cursor: pointer;
   transition: all 0.2s; margin-top: 14px;
@@ -206,34 +210,42 @@ function next() {
 .mastered-card {
   background: linear-gradient(135deg, var(--gold-dim), transparent);
   border: 1px solid var(--gold); border-radius: var(--radius);
-  padding: 32px; text-align: center; margin-bottom: 20px;
+  padding: calc(var(--sp) * 2);
+  text-align: center;
+  margin-bottom: calc(var(--sp) * 1.2);
   animation: pulse 2s ease infinite;
 }
 @keyframes pulse {
   0%,100% { box-shadow: 0 0 0 0 rgba(201,168,76,0.1); }
   50%      { box-shadow: 0 0 0 12px rgba(201,168,76,0); }
 }
-.mastered-card .trophy { font-size: 48px; margin-bottom: 12px; }
+.mastered-card .trophy { font-size: calc(var(--icon) * 2); margin-bottom: calc(var(--sp) * 0.8); }
 .mastered-card h2 { font-family: 'Fraunces', serif; font-size: 1.7rem; color: var(--gold2); margin-bottom: 8px; }
 .mastered-card p { color: var(--text2); font-size: 1rem; }
+.remaining-note { margin-top: calc(var(--sp) * 0.5); color: var(--gold); font-size: 0.9rem; }
+.big-emoji { font-size: calc(var(--icon) * 2.2); margin-bottom: calc(var(--sp) * 0.8); }
 
-.idle-msg { text-align: center; padding: 60px 0; }
+.idle-msg { text-align: center; padding: calc(var(--sp) * 3) 0; }
 .idle-msg h2 { font-family: 'Fraunces', serif; font-size: 1.7rem; color: var(--gold2); margin-bottom: 12px; }
 .idle-msg p { color: var(--text2); }
 
-.session-end { text-align: center; padding: 40px 0; }
+.session-end { text-align: center; padding: calc(var(--sp) * 2.4) 0; }
 .session-end h2 { font-family: 'Fraunces', serif; font-size: 2.1rem; color: var(--gold2); margin-bottom: 12px; }
 .session-end p { color: var(--text2); margin-bottom: 28px; }
-.end-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 32px; }
-.end-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 20px 12px; }
+.end-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: var(--sp); margin-bottom: calc(var(--sp) * 2); }
+.end-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: calc(var(--sp) * 1.2) calc(var(--sp) * 0.9); }
 .end-stat .num { font-family: 'JetBrains Mono', monospace; font-size: 1.9rem; color: var(--gold); }
 .end-stat .lbl { font-size: 0.85rem; color: var(--text3); margin-top: 4px; }
 
 .icon-btn {
   background: var(--surface2); border: 1px solid var(--border);
-  color: var(--text2); width: 38px; height: 38px; border-radius: var(--radius-sm);
+  color: var(--text2);
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: var(--radius-sm);
   cursor: pointer; display: flex; align-items: center; justify-content: center;
-  font-size: 16px; transition: all 0.2s;
+  font-size: var(--icon);
+  transition: all 0.2s;
 }
 .icon-btn:hover { border-color: var(--red); color: var(--red); }
 </style>

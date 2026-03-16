@@ -18,8 +18,14 @@
   --radius: 12px;
   --radius-sm: 8px;
 
-  /* Typography scale (responsive) */
-  --fs-body: clamp(18px, 1.25vw + 12px, 32px);
+  /* App-wide responsive scale (uses vmin so width/height both matter) */
+  --fs-0: clamp(17px, 1.25vmin + 12px, 30px); /* base UI */
+  --fs-1: clamp(20px, 1.70vmin + 12px, 38px); /* reading (definition/sentences) */
+  --fs-2: clamp(26px, 2.40vmin + 12px, 56px); /* hero / big headings */
+
+  --sp: clamp(10px, 1.10vmin + 6px, 24px);     /* spacing unit */
+  --tap: clamp(44px, 3.20vmin + 18px, 72px);   /* touch target size */
+  --icon: clamp(18px, 1.60vmin + 10px, 36px);  /* icon glyph size */
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -38,8 +44,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  /* Base font scales with screen size */
-  font-size: var(--fs-body);
+  /* Base font scales with screen size (width/height aware) */
+  font-size: var(--fs-0);
 }
 
 body::before {
@@ -55,7 +61,7 @@ body::before {
   width: 100%;
   max-width: 100%;
   min-height: 100vh;
-  padding: 16px 12px calc(80px + env(safe-area-inset-bottom));
+  padding: calc(var(--sp) * 1.2) calc(var(--sp) * 1.2) calc(var(--tap) + var(--sp) + env(safe-area-inset-bottom));
   margin: 0 auto;
   position: relative;
   z-index: 1;
@@ -67,8 +73,8 @@ body::before {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px 18px;
-  margin-bottom: 14px;
+  padding: calc(var(--sp) * 1.35);
+  margin-bottom: var(--sp);
 }
 
 .card .definition-label {
@@ -77,18 +83,18 @@ body::before {
   text-transform: uppercase;
   color: var(--text3);
   font-family: 'JetBrains Mono', monospace;
-  margin-bottom: 10px;
+  margin-bottom: calc(var(--sp) * 0.7);
 }
 
 .card .definition-text {
-  font-size: 1.15rem;
+  font-size: var(--fs-1);
   line-height: 1.65;
   color: var(--text);
 }
 
 /* Buttons */
 .btn {
-  padding: 12px 24px;
+  padding: calc(var(--sp) * 0.95) calc(var(--sp) * 1.6);
   border-radius: var(--radius-sm);
   font-size: 1rem;
   font-weight: 500;
@@ -101,7 +107,7 @@ body::before {
 .btn-primary:hover { background: var(--gold2); }
 .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
 .btn-secondary:hover { border-color: var(--gold); color: var(--gold); }
-.btn-row { display: flex; gap: 12px; }
+.btn-row { display: flex; gap: var(--sp); }
 
 /* Sticky bottom bar */
 .sticky-bottom {
@@ -113,38 +119,13 @@ body::before {
   max-width: 100%;
   background: var(--bg);
   border-top: 1px solid var(--border);
-  padding: 10px 12px;
-  display: flex; gap: 12px;
+  padding: calc(var(--sp) * 0.9) calc(var(--sp) * 1.2);
+  display: flex; gap: var(--sp);
   z-index: 100;
 }
 .sticky-bottom .btn { flex: 1; }
 
-/* Responsive typography & layout */
-@media (min-width: 768px) {
-  .app {
-    padding: 24px 32px calc(96px + env(safe-area-inset-bottom));
-  }
-  .sticky-bottom {
-    padding: 14px 24px;
-  }
-  .card {
-    padding: 26px 26px;
-    margin-bottom: 18px;
-  }
-}
-
-@media (min-width: 1200px) {
-  .app {
-    padding: 32px 64px calc(120px + env(safe-area-inset-bottom));
-  }
-  .sticky-bottom {
-    padding: 16px 64px;
-  }
-  .card {
-    padding: 34px 40px;
-    margin-bottom: 22px;
-  }
-}
+/* Keep scrollbar small even on large screens */
 
 /* Fade transition */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }

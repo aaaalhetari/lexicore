@@ -72,21 +72,21 @@ function statusLabel(w) {
   return w.status === 'learning' ? `C${w.cycle} S${w.stage}` : w.status
 }
 
-function onAdd() {
+async function onAdd() {
   const { word, definition } = form.value
   if (!word.trim() || !definition.trim()) { alert('Word and definition are required.'); return }
-  const ok = addWord({ ...form.value })
+  const ok = await addWord({ ...form.value })
   if (!ok) { alert(`"${word}" already exists.`); return }
   form.value = { word: '', definition: '', example: '', example_meaning: '', s3_correct: '', s3_wrong: '' }
   showForm.value = false
 }
 
-function onImportCSV(e) {
+async function onImportCSV(e) {
   const file = e.target.files[0]
   if (!file) return
   const reader = new FileReader()
-  reader.onload = ev => {
-    const added = importCSV(ev.target.result)
+  reader.onload = async (ev) => {
+    const added = await importCSV(ev.target.result)
     alert(`Imported ${added} new word(s).`)
   }
   reader.readAsText(file)
@@ -105,7 +105,7 @@ function saveAndBack() {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 20px; margin-bottom: 20px;
 }
-.add-form h3 { margin-bottom: 16px; font-size: 15px; }
+.add-form h3 { margin-bottom: 16px; font-size: 1.1rem; }
 .add-form h3 { margin-bottom: 16px; font-size: 1.1rem; }
 .form-grid { display: grid; gap: 10px; }
 .form-input {

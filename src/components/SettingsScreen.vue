@@ -78,7 +78,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { getSettings, updateSetting, updateCycleSetting, snapshotSettings, restoreSettings, importJSON, downloadJSON } from '../store/data.js'
+import { getSettings, updateSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser, signInWithGitHub, signOut } from '../store/sync.js'
 
@@ -114,29 +114,36 @@ onMounted(() => {
   }
 })
 
-function save() {
-  updateSetting('new_words_per_session', local.new_words_per_session)
-  updateSetting('pool_size', local.pool_size)
-  for (let c = 1; c <= 3; c++) {
-    for (let st = 1; st <= 3; st++) {
-      updateCycleSetting(c, st, local[`cycle_${c}`][`stage_${st}_required`])
+async function save() {
+  await updateSettings(local)
+  emit('back')
+}
+
+function cancel() {
+  const restored = restoreSettings(snapshot.value)
+  if (restored) {
+    local.new_words_per_session = restored.new_words_per_session
+    local.pool_size = restored.pool_size
+    for (let c = 1; c <= 3; c++) {
+      for (let st = 1; st <= 3; st++) {
+        local[`cycle_${c}`][`stage_${st}_required`] = restored[`cycle_${c}`]?.[`stage_${st}_required`]
+      }
     }
   }
   emit('back')
 }
 
-function cancel() {
-  if (snapshot.value) restoreSettings(snapshot.value)
-  emit('back')
-}
-
-function onUpload(e) {
+async function onUpload(e) {
   const file = e.target.files[0]
   if (!file) return
   const reader = new FileReader()
-  reader.onload = ev => {
-    try { importJSON(ev.target.result); alert('Progress loaded!') }
-    catch (err) { alert('Error: ' + err.message) }
+  reader.onload = async (ev) => {
+    try {
+      const added = await importJSON(ev.target.result)
+      alert(`Imported ${added} word(s). Reload to see updates.`)
+    } catch (err) {
+      alert('Error: ' + err.message)
+    }
   }
   reader.readAsText(file)
 }

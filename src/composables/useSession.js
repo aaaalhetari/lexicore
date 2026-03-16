@@ -1,59 +1,80 @@
+/**
+ * LexiCore v2: Session composable - backend-driven, weighted pick
+ */
+
 import { ref, computed } from 'vue'
-import { getData, getSettings, advanceCycles, buildSessionPool, recordSession, saveData, today } from '../store/data.js'
+import { getActivePool, submitAnswer, recordSession, getSettings } from '../store/data.js'
+import { getWords } from '../store/realtime.js'
 
 export function useSession() {
-  const activeWords     = ref([])
-  const distractorPool  = ref([])
-  const totalAtStart    = ref(0)
-  const correct         = ref(0)
-  const answeredCount   = ref(0)
-  const lastShownId     = ref(null)
+  const activeWords = ref([])
+  const distractorPool = ref([])
+  const totalAtStart = ref(0)
+  const correct = ref(0)
+  const answeredCount = ref(0)
+  const lastShownId = ref(null)
   const lastS3WasCorrect = ref(undefined)
-  const currentWord     = ref(null)
-  const sessionDone     = ref(false)
+  const currentWordId = ref(null)
+  const sessionDone = ref(false)
 
-  // ── WEIGHTED PICK ─────────────────────────────────────
+  const currentWord = computed(() => {
+    const id = currentWordId.value
+    if (!id) return null
+    const fromStore = getWords().find((w) => w.id === id)
+    return fromStore ?? activeWords.value.find((w) => w.id === id)
+  })
+
   function pickNextWord() {
-    if (activeWords.value.length === 1) return activeWords.value[0]
-    const candidates = activeWords.value.filter(w => w.id !== lastShownId.value)
-    const pool = candidates.length > 0 ? candidates : activeWords.value
+    const pool = activeWords.value
+    if (pool.length === 1) return pool[0]
+    const candidates = pool.filter((w) => w.id !== lastShownId.value)
+    const pickPool = candidates.length > 0 ? candidates : pool
     const settings = getSettings()
 
-    const weights = pool.map(w => {
+    const weights = pickPool.map((w) => {
       const req = settings[`cycle_${w.cycle || 1}`]?.[`stage_${w.stage}_required`] || 4
       const progress = w.consecutive_correct / req
       return 1 + (1 - progress) * 3
     })
     const total = weights.reduce((a, b) => a + b, 0)
     let r = Math.random() * total
-    for (let i = 0; i < pool.length; i++) {
+    for (let i = 0; i < pickPool.length; i++) {
       r -= weights[i]
-      if (r <= 0) { lastShownId.value = pool[i].id; return pool[i] }
+      if (r <= 0) {
+        lastShownId.value = pickPool[i].id
+        return pickPool[i]
+      }
     }
-    lastShownId.value = pool[0].id
-    return pool[0]
+    lastShownId.value = pickPool[0].id
+    return pickPool[0]
   }
 
-  // ── START ────────────────────────────────────────────
-  function startSession() {
-    advanceCycles()
-    const { activeWords: aw, distractorPool: dp } = buildSessionPool()
-    if (aw.length === 0) return 'done_today'
+  async function startSession() {
+    const pool = await getActivePool()
+    if (pool.length === 0) return 'done_today'
 
-    activeWords.value    = aw
-    distractorPool.value = dp
-    totalAtStart.value   = aw.length
-    correct.value        = 0
-    answeredCount.value  = 0
-    lastShownId.value    = null
+    const allWords = getWords()
+    const poolIds = new Set(pool.map((w) => w.id))
+    const distractors = [...pool]
+    const extras = allWords.filter((w) => !poolIds.has(w.id) && w.status !== 'mastered')
+    for (let i = 0; distractors.length < Math.max(20, 4) && i < extras.length; i++) {
+      distractors.push(extras[i])
+    }
+
+    activeWords.value = pool
+    distractorPool.value = distractors
+    totalAtStart.value = pool.length
+    correct.value = 0
+    answeredCount.value = 0
+    lastShownId.value = null
     lastS3WasCorrect.value = undefined
-    sessionDone.value    = false
+    sessionDone.value = false
 
-    currentWord.value = pickNextWord()
+    const next = pickNextWord()
+    currentWordId.value = next?.id ?? null
     return 'started'
   }
 
-  // ── PROGRESS ─────────────────────────────────────────
   const progressPct = computed(() => {
     if (!totalAtStart.value) return 0
     return ((totalAtStart.value - activeWords.value.length) / totalAtStart.value) * 100
@@ -61,62 +82,34 @@ export function useSession() {
 
   const remaining = computed(() => activeWords.value.length)
 
-  // ── ANSWER ───────────────────────────────────────────
-  function handleAnswer(isCorrect) {
+  async function handleAnswer(isCorrect) {
     const word = currentWord.value
+    if (!word) return null
+
     answeredCount.value++
+    if (isCorrect) correct.value++
 
-    if (isCorrect) {
-      word.consecutive_correct++
-      correct.value++
-      const cycle = word.cycle || 1
-      const settings = getSettings()
-      const required = settings[`cycle_${cycle}`][`stage_${word.stage}_required`]
+    const result = await submitAnswer(word.id, isCorrect)
+    if (result?.error) return { type: 'error', result }
 
-      if (word.consecutive_correct >= required) {
-        if (word.stage < 3) {
-          word.stage++
-          word.consecutive_correct = 0
-          saveData()
-          return { type: 'stage_advance', stage: word.stage }
-        } else {
-          // Completed all stages in this cycle
-          if (cycle < 3) {
-            word[`cycle_${cycle}_completed_date`] = today()
-            activeWords.value = activeWords.value.filter(w => w.id !== word.id)
-            saveData()
-            return { type: 'cycle_complete', cycle, remaining: activeWords.value.length }
-          } else {
-            word.status = 'mastered'
-            word[`cycle_3_completed_date`] = today()
-            activeWords.value = activeWords.value.filter(w => w.id !== word.id)
-            saveData()
-            return { type: 'mastered', word: word.word, remaining: activeWords.value.length }
-          }
-        }
-      } else {
-        saveData()
-        return { type: 'correct', count: word.consecutive_correct, required }
-      }
-    } else {
-      word.consecutive_correct = 0
-      saveData()
-      return { type: 'wrong' }
+    if (result.type === 'mastered' || result.type === 'cycle_complete') {
+      activeWords.value = activeWords.value.filter((w) => w.id !== word.id)
     }
+
+    return result
   }
 
-  // ── NEXT WORD ─────────────────────────────────────────
   function advance() {
     if (activeWords.value.length === 0) {
       sessionDone.value = true
       recordSession(answeredCount.value, correct.value)
       return false
     }
-    currentWord.value = pickNextWord()
+    const next = pickNextWord()
+    currentWordId.value = next?.id ?? null
     return true
   }
 
-  // ── STAGE 3 ALTERNATION ───────────────────────────────
   function getS3Type() {
     if (lastS3WasCorrect.value === undefined) {
       lastS3WasCorrect.value = Math.random() > 0.5
@@ -127,9 +120,18 @@ export function useSession() {
   }
 
   return {
-    activeWords, distractorPool, totalAtStart,
-    correct, answeredCount, currentWord, sessionDone,
-    progressPct, remaining,
-    startSession, handleAnswer, advance, getS3Type,
+    activeWords,
+    distractorPool,
+    totalAtStart,
+    correct,
+    answeredCount,
+    currentWord,
+    sessionDone,
+    progressPct,
+    remaining,
+    startSession,
+    handleAnswer,
+    advance,
+    getS3Type,
   }
 }

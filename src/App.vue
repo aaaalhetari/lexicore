@@ -3,7 +3,7 @@
   <div class="app" v-else>
     <!-- HEADER -->
     <div class="header">
-      <div class="logo">LexiCore <span>v1.0</span></div>
+      <div class="logo">LexiCore <span>v2.0</span></div>
       <div class="header-btns" v-if="screen !== 'session'">
         <button class="icon-btn" @click="goTo('words')" title="Word List">📚</button>
         <button class="icon-btn" @click="goTo('settings')" title="Settings">⚙️</button>
@@ -23,9 +23,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { initLexicore } from './store/data.js'
-import HomeScreen    from './components/HomeScreen.vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { subscribeRealtime, unsubscribeRealtime } from './store/realtime.js'
+import { getCurrentUser } from './store/sync.js'
+import { checkRefillNeeded } from './store/data.js'
+import HomeScreen from './components/HomeScreen.vue'
 import SessionScreen from './components/SessionScreen.vue'
 import SettingsScreen from './components/SettingsScreen.vue'
 import WordListScreen from './components/WordListScreen.vue'
@@ -33,11 +35,19 @@ import WordListScreen from './components/WordListScreen.vue'
 const screen = ref('home')
 const loading = ref(true)
 
-function goTo(name) { screen.value = name }
+function goTo(name) {
+  screen.value = name
+}
 
 onMounted(async () => {
-  await initLexicore()
+  const user = await getCurrentUser()
+  await subscribeRealtime(user?.id ?? null)
+  if (user) checkRefillNeeded()
   loading.value = false
+})
+
+onUnmounted(() => {
+  unsubscribeRealtime()
 })
 </script>
 
