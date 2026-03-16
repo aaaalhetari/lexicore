@@ -4,6 +4,7 @@
     <div class="nav-tabs">
       <button class="nav-tab" :class="{ active: tab === 'general' }" @click="tab = 'general'">General</button>
       <button class="nav-tab" :class="{ active: tab === 'cycles'  }" @click="tab = 'cycles'">Cycles</button>
+      <button class="nav-tab" :class="{ active: tab === 'account' }" @click="tab = 'account'">Account</button>
     </div>
 
     <!-- General -->
@@ -23,14 +24,14 @@
         <h3>Progress File</h3>
         <div class="setting-row">
           <div><div class="setting-label">Upload JSON</div><div class="setting-desc">Restore progress from another device</div></div>
-          <label class="btn btn-secondary" style="cursor:pointer;font-size:13px;padding:8px 16px">
+          <label class="btn btn-secondary small-btn" style="cursor:pointer">
             ⬆ Upload
             <input type="file" accept=".json" @change="onUpload" style="display:none">
           </label>
         </div>
         <div class="setting-row">
           <div><div class="setting-label">Download JSON</div><div class="setting-desc">Save your current progress</div></div>
-          <button class="btn btn-secondary" style="font-size:13px;padding:8px 16px" @click="downloadJSON()">⬇ Download</button>
+          <button class="btn btn-secondary small-btn" @click="downloadJSON()">⬇ Download</button>
         </div>
       </div>
     </div>
@@ -46,6 +47,30 @@
       </div>
     </div>
 
+    <!-- Account / Sync -->
+    <div v-if="tab === 'account'" class="settings-section">
+      <h3>Sync across devices</h3>
+      <p class="sync-desc">Sign in to sync progress and settings across computer, phone, and tablet.</p>
+      <template v-if="!hasSync">
+        <p class="sync-hint">Sync requires Supabase. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to enable.</p>
+      </template>
+      <template v-else-if="user">
+        <p class="sync-status">Signed in as <strong>{{ user.email }}</strong></p>
+        <button class="btn btn-secondary" @click="handleSignOut">Sign out</button>
+      </template>
+      <template v-else>
+        <div class="auth-form">
+          <input v-model="authEmail" type="email" placeholder="Email" class="form-input">
+          <input v-model="authPassword" type="password" placeholder="Password" class="form-input">
+          <div class="auth-actions">
+            <button class="btn btn-primary" @click="handleSignIn">Sign in</button>
+            <button class="btn btn-secondary" @click="handleSignUp">Sign up</button>
+          </div>
+          <p v-if="authError" class="auth-error">{{ authError }}</p>
+        </div>
+      </template>
+    </div>
+
     <!-- Sticky Buttons -->
     <div class="sticky-bottom">
       <button class="btn btn-primary" @click="save">Save & Back</button>
@@ -57,10 +82,21 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { getSettings, updateSetting, updateCycleSetting, snapshotSettings, restoreSettings, importJSON, downloadJSON } from '../store/data.js'
+import { hasSupabase } from '../lib/supabase.js'
+import { getCurrentUser, signIn, signUp, signOut } from '../store/sync.js'
 
 const emit = defineEmits(['back'])
 const tab = ref('general')
 const snapshot = ref(null)
+const hasSync = hasSupabase()
+const user = ref(null)
+const authEmail = ref('')
+const authPassword = ref('')
+const authError = ref('')
+
+onMounted(async () => {
+  if (hasSync) user.value = await getCurrentUser()
+})
 
 // Local copy of settings for editing
 const local = reactive({
@@ -109,6 +145,31 @@ function onUpload(e) {
   }
   reader.readAsText(file)
 }
+
+async function handleSignIn() {
+  authError.value = ''
+  try {
+    await signIn(authEmail.value, authPassword.value)
+    window.location.reload()
+  } catch (e) {
+    authError.value = e.message || 'Sign in failed'
+  }
+}
+
+async function handleSignUp() {
+  authError.value = ''
+  try {
+    await signUp(authEmail.value, authPassword.value)
+    authError.value = 'Check your email to confirm, then sign in.'
+  } catch (e) {
+    authError.value = e.message || 'Sign up failed'
+  }
+}
+
+async function handleSignOut() {
+  await signOut()
+  window.location.reload()
+}
 </script>
 
 <style scoped>
@@ -144,4 +205,22 @@ function onUpload(e) {
   text-align: center; outline: none;
 }
 .setting-input:focus { border-color: var(--gold); }
+
+.small-btn {
+  font-size: 0.95rem;
+  padding: calc(var(--sp) * 0.6) calc(var(--sp) * 1.1);
+}
+
+.sync-desc { font-size: 0.95rem; color: var(--text2); margin-bottom: 14px; }
+.sync-hint { font-size: 0.85rem; color: var(--text3); }
+.sync-status { margin-bottom: 12px; }
+.auth-form { display: flex; flex-direction: column; gap: 10px; max-width: 280px; }
+.auth-form .form-input {
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius-sm); padding: 10px 14px;
+  font-size: 1rem; outline: none; font-family: 'DM Sans', sans-serif;
+}
+.auth-form .form-input:focus { border-color: var(--gold); }
+.auth-actions { display: flex; gap: 10px; }
+.auth-error { font-size: 0.9rem; color: var(--red); margin-top: 4px; }
 </style>

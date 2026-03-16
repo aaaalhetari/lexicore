@@ -1,5 +1,6 @@
 <template>
-  <div class="app">
+  <div class="app-loading" v-if="loading">Loading words…</div>
+  <div class="app" v-else>
     <!-- HEADER -->
     <div class="header">
       <div class="logo">LexiCore <span>v1.0</span></div>
@@ -23,17 +24,21 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { loadFromStorage } from './store/data.js'
+import { initLexicore } from './store/data.js'
 import HomeScreen    from './components/HomeScreen.vue'
 import SessionScreen from './components/SessionScreen.vue'
 import SettingsScreen from './components/SettingsScreen.vue'
 import WordListScreen from './components/WordListScreen.vue'
 
 const screen = ref('home')
+const loading = ref(true)
 
 function goTo(name) { screen.value = name }
 
-onMounted(() => { loadFromStorage() })
+onMounted(async () => {
+  await initLexicore()
+  loading.value = false
+})
 </script>
 
 <style scoped>
@@ -52,19 +57,38 @@ onMounted(() => { loadFromStorage() })
 
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 20px 0 32px;
+  padding: calc(var(--sp) * 1.1) 0 calc(var(--sp) * 1.6);
 }
 .logo {
   font-family: 'Fraunces', serif;
-  font-size: 22px; color: var(--gold); letter-spacing: 0.5px;
+  font-size: clamp(1.3rem, 1.4vmin + 1rem, 2.2rem);
+  color: var(--gold); letter-spacing: 0.5px;
 }
-.logo span { color: var(--text3); font-size: 13px; font-family: 'JetBrains Mono', monospace; margin-left: 10px; }
-.header-btns { display: flex; gap: 10px; }
+.logo span {
+  color: var(--text3);
+  font-size: 0.85rem;
+  font-family: 'JetBrains Mono', monospace;
+  margin-left: calc(var(--sp) * 0.8);
+}
+.header-btns { display: flex; gap: calc(var(--sp) * 0.6); }
 .icon-btn {
   background: var(--surface2); border: 1px solid var(--border);
-  color: var(--text2); width: 38px; height: 38px; border-radius: var(--radius-sm);
+  color: var(--text2);
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: var(--radius-sm);
   cursor: pointer; display: flex; align-items: center; justify-content: center;
-  font-size: 16px; transition: all 0.2s;
+  font-size: var(--icon);
+  transition: all 0.2s;
 }
 .icon-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+.app-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text2);
+  font-size: 1.1rem;
+}
 </style>
