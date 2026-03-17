@@ -19,31 +19,9 @@ VITE_SUPABASE_URL=https://xxxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
-## 3. Create the database table
+## 3. Run database migrations
 
-In Supabase **SQL Editor**, run the contents of `supabase-migration.sql`:
-
-```sql
-create table if not exists public.user_data (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  data jsonb not null default '{}',
-  updated_at timestamptz not null default now()
-);
-
-alter table public.user_data enable row level security;
-
-create policy "Users can read own data"
-  on public.user_data for select
-  using (auth.uid() = user_id);
-
-create policy "Users can insert own data"
-  on public.user_data for insert
-  with check (auth.uid() = user_id);
-
-create policy "Users can update own data"
-  on public.user_data for update
-  using (auth.uid() = user_id);
-```
+In Supabase **SQL Editor**, run the migration files in `supabase/migrations/` in order (or use `supabase db push` if using Supabase CLI). The schema includes `vocabulary`, `user_settings`, `sessions`, and `refill_jobs`.
 
 ## 4. Enable GitHub auth
 

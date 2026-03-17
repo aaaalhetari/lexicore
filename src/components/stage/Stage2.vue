@@ -47,14 +47,35 @@
         @click="onSentenceClick"
       >
         <span class="sentence-part">{{ part1 }}</span>
-        <span class="blank" :class="{ filled: revealed }">{{ revealed ? word.word : currentMeaning }}</span>
+        <span class="blank-wrapper">
+          <span class="stage2-meaning-hint">{{ currentMeaning }}</span>
+          <span class="blank" :class="{ filled: revealed }">{{ revealed ? word.word : '___' }}</span>
+        </span>
         <span class="sentence-part">{{ part2 }}</span>
       </div>
-      <div v-if="revealed && !answered" class="tap-zones">
-        <div class="tap-zone tap-wrong" @click.stop="answer(false)">✗</div>
-        <div class="tap-zone tap-correct" @click.stop="answer(true)">✓</div>
+      <div class="tap-zones">
+        <div
+          class="tap-zone tap-wrong"
+          :class="{
+            disabled: !revealed,
+            selected: answered && chosen === false,
+            'selected-correct': answered && chosen === false && feedback?.type === 'correct',
+            'selected-wrong': answered && chosen === false && feedback?.type === 'wrong',
+          }"
+          @click.stop="revealed && !answered && answer(false)"
+        >✗</div>
+        <div
+          class="tap-zone tap-correct"
+          :class="{
+            disabled: !revealed,
+            selected: answered && chosen === true,
+            'selected-correct': answered && chosen === true && feedback?.type === 'correct',
+            'selected-wrong': answered && chosen === true && feedback?.type === 'wrong',
+          }"
+          @click.stop="revealed && !answered && answer(true)"
+        >✓</div>
       </div>
-      <div v-if="revealed" class="swipe-hint">← tap ✗ &nbsp;|&nbsp; tap ✓ →</div>
+      <div class="swipe-hint">← tap ✗ &nbsp;|&nbsp; tap ✓ →</div>
     </div>
   </div>
 </template>
@@ -74,6 +95,7 @@ const emit = defineEmits(['answered', 'skip', 'content-generated'])
 const { playWord, playTextAI, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
 const revealed = ref(false)
 const answered = ref(false)
+const chosen = ref(null)
 const generating = ref(false)
 const cardEl = ref(null)
 
@@ -190,12 +212,28 @@ function onSentenceClick() {
 function answer(val) {
   if (answered.value) return
   stopAudio()
+  chosen.value = val
   answered.value = true
   emit('answered', val)
 }
 </script>
 
 <style scoped>
+.blank-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 4px;
+}
+.stage2-meaning-hint {
+  font-size: 0.9rem;
+  color: var(--gold);
+  margin-bottom: 4px;
+  text-align: center;
+  max-width: 320px;
+  line-height: 1.4;
+}
 .sentence-text {
   font-family: 'DM Sans', sans-serif;
   font-size: clamp(1.35rem, 1.2vw + 1rem, 2.2rem);
@@ -207,7 +245,7 @@ function answer(val) {
 .blank {
   display: inline-block;
   min-width: 60px;
-  margin: 0 4px;
+  margin: 0;
   border-bottom: 2px solid var(--gold);
   padding: 0 4px 2px;
   vertical-align: baseline;
@@ -250,6 +288,11 @@ function answer(val) {
   -webkit-tap-highlight-color: transparent;
 }
 .tap-zone:active { transform: scale(0.97); }
+.tap-zone.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 .tap-wrong {
   background: rgba(224, 92, 92, 0.15);
   color: var(--red);
@@ -262,6 +305,18 @@ function answer(val) {
   margin-left: 6px;
 }
 .tap-correct:hover { background: rgba(76, 175, 130, 0.25); }
+.tap-zone.selected-correct {
+  background: rgba(76, 175, 130, 0.35) !important;
+  border: 2px solid var(--green) !important;
+  color: var(--green) !important;
+  box-shadow: 0 0 0 2px rgba(76, 175, 130, 0.3);
+}
+.tap-zone.selected-wrong {
+  background: rgba(224, 92, 92, 0.35) !important;
+  border: 2px solid var(--red) !important;
+  color: var(--red) !important;
+  box-shadow: 0 0 0 2px rgba(224, 92, 92, 0.3);
+}
 .swipe-hint {
   font-size: 0.8rem;
   color: var(--text3);

@@ -1,9 +1,5 @@
 import { supabase, hasSupabase } from '../lib/supabase.js'
 
-const STORAGE_KEY = 'lexicore_data'
-const SYNC_DEBOUNCE_MS = 1500
-let syncTimeout = null
-
 /** Get current user */
 export async function getCurrentUser() {
   if (!hasSupabase()) return null
@@ -27,48 +23,6 @@ export async function signInWithGitHub() {
 export async function signOut() {
   if (!hasSupabase()) return
   await supabase.auth.signOut()
-}
-
-/** Load user data from Supabase */
-export async function loadFromCloud() {
-  if (!hasSupabase()) return null
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data, error } = await supabase
-    .from('user_data')
-    .select('data')
-    .eq('user_id', user.id)
-    .maybeSingle()
-  if (error) throw error
-  return data?.data ?? null
-}
-
-/** Save user data to Supabase */
-export async function saveToCloud(payload) {
-  if (!hasSupabase()) return
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return // not signed in, skip sync
-  const { error } = await supabase
-    .from('user_data')
-    .upsert(
-      { user_id: user.id, data: payload, updated_at: new Date().toISOString() },
-      { onConflict: 'user_id' }
-    )
-  if (error) throw error
-}
-
-/** Queue a sync (debounced) */
-export function queueSync(payload) {
-  if (!hasSupabase()) return
-  if (syncTimeout) clearTimeout(syncTimeout)
-  syncTimeout = setTimeout(async () => {
-    syncTimeout = null
-    try {
-      await saveToCloud(payload)
-    } catch (e) {
-      console.warn('Sync failed:', e)
-    }
-  }, SYNC_DEBOUNCE_MS)
 }
 
 /** Subscribe to auth changes */

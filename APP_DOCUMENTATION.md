@@ -16,7 +16,6 @@
 ```
 lexicore/
 ├── public/
-│   └── words.csv          # قائمة الكلمات الأساسية (~4955 كلمة)
 ├── src/
 │   ├── main.js            # نقطة الدخول
 │   ├── App.vue            # المكون الرئيسي + التنقل
@@ -39,7 +38,7 @@ lexicore/
 │           └── Stage3.vue    # صحة/خطأ الجملة
 ├── .github/workflows/
 │   └── deploy.yml         # نشر GitHub Pages
-├── supabase-migration.sql # جدول user_data للمزامنة
+├── supabase/migrations/   # ترحيلات قاعدة البيانات
 ├── .env.example           # نموذج المتغيرات
 └── package.json
 ```
@@ -188,24 +187,14 @@ weight = 1 + (1 - progress) * 3
 - المحتوى: `{ meta, settings, words, sessions }`
 
 ### Supabase (اختياري)
-- جدول `user_data`: `user_id`, `data` (JSONB), `updated_at`
+- جداول: `vocabulary`, `user_settings`, `sessions`, `refill_jobs`
 - RLS: كل مستخدم يقرأ/يكتب بياناته فقط
 - تسجيل الدخول: GitHub OAuth
-- مزامنة مؤجلة (debounce 1.5 ثانية) بعد كل `saveData()`
+- مزامنة فورية عبر Realtime subscriptions
 
 ### أولوية التحميل
-1. إذا كان المستخدم مسجلاً → تحميل من السحابة
-2. عند الفشل → استخدام localStorage
-3. دمج مع `words.csv` (الكلمات المحفوظة لها الأولوية)
-
----
-
-## ملف words.csv
-
-- المسار: `public/words.csv`
-- التنسيق: كلمة واحدة في كل سطر
-- يُستخدم كمصدر أساسي للكلمات
-- الكلمات الجديدة تحصل على تعريفات ومحتوى افتراضي عبر `placeholderWord()`
+1. إذا كان المستخدم مسجلاً → تحميل من السحابة (vocabulary, user_settings)
+2. الكلمات الجديدة تُضاف عبر reservoir من `word_bank` أو يدوياً
 
 ---
 
@@ -289,7 +278,7 @@ npm run preview  # معاينة البناء
 2. **بدء الجلسة**: `advanceCycles()` → `buildSessionPool()` → اختيار كلمة مرجحة
 3. **الإجابة**: تحديث `consecutive_correct` أو إعادة تعيينه
 4. **التقدم**: مرحلة → دورة → mastered
-5. **الحفظ**: `saveData()` → localStorage + `queueSync()` للسحابة
+5. **الحفظ**: تحديث مباشر في `vocabulary` و `user_settings` عبر Supabase
 
 ---
 

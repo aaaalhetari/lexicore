@@ -36,17 +36,7 @@ In Supabase **Storage**, create a public bucket named `lexicore-audio` for TTS f
 
 ### 4. Seed Word Bank (Optional)
 
-To use the full word list, seed `word_bank`:
-
-```sql
--- Example: insert from your words.csv
-insert into public.word_bank (word)
-select unnest(string_to_array(
-  'about,above,across,action,activity,...', ','
-)) on conflict (word) do nothing;
-```
-
-If empty, the Edge Function uses a built-in fallback list of ~50 words.
+The migration `20240316000017_seed_word_bank.sql` seeds `word_bank` with ~4954 words. If `word_bank` is empty, the Edge Function uses a built-in fallback list of ~50 words.
 
 ### 5. Edge Function Secrets
 

@@ -42,9 +42,25 @@
       </div>
       <div class="definition-label">Is this sentence correct?</div>
       <div class="stage3-sentence" v-html="displaySentence"></div>
-      <div v-if="!answered" class="tap-zones">
-        <div class="tap-zone tap-wrong" @click.stop="answer(false)">✗</div>
-        <div class="tap-zone tap-correct" @click.stop="answer(true)">✓</div>
+      <div class="tap-zones">
+        <div
+          class="tap-zone tap-wrong"
+          :class="{
+            selected: answered && chosen === false,
+            'selected-correct': answered && chosen === false && feedback?.type === 'correct',
+            'selected-wrong': answered && chosen === false && feedback?.type === 'wrong',
+          }"
+          @click.stop="!answered && answer(false)"
+        >✗</div>
+        <div
+          class="tap-zone tap-correct"
+          :class="{
+            selected: answered && chosen === true,
+            'selected-correct': answered && chosen === true && feedback?.type === 'correct',
+            'selected-wrong': answered && chosen === true && feedback?.type === 'wrong',
+          }"
+          @click.stop="!answered && answer(true)"
+        >✓</div>
       </div>
       <div class="swipe-hint">← tap ✗ &nbsp;|&nbsp; tap ✓ →</div>
       <div v-if="feedback" class="stage3-explanation-block">
@@ -84,6 +100,7 @@ const emit = defineEmits(['answered', 'skip', 'content-generated', 'retry-explan
 
 const { playWord, playTextAI, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
 const answered = ref(false)
+const chosen = ref(null)
 const generating = ref(false)
 const cardEl = ref(null)
 
@@ -197,12 +214,13 @@ async function onGenerateComplete() {
   }
 }
 
-function answer(chosen) {
+function answer(val) {
   if (answered.value) return
   stopAudio()
+  chosen.value = val
   answered.value = true
   playWord(props.word, 5)
-  emit('answered', chosen === props.useCorrect)
+  emit('answered', val === props.useCorrect)
 }
 </script>
 
@@ -264,6 +282,18 @@ function answer(chosen) {
   margin-left: 6px;
 }
 .tap-correct:hover { background: rgba(76, 175, 130, 0.25); }
+.tap-zone.selected-correct {
+  background: rgba(76, 175, 130, 0.35) !important;
+  border: 2px solid var(--green) !important;
+  color: var(--green) !important;
+  box-shadow: 0 0 0 2px rgba(76, 175, 130, 0.3);
+}
+.tap-zone.selected-wrong {
+  background: rgba(224, 92, 92, 0.35) !important;
+  border: 2px solid var(--red) !important;
+  color: var(--red) !important;
+  box-shadow: 0 0 0 2px rgba(224, 92, 92, 0.3);
+}
 .swipe-hint {
   font-size: 0.8rem;
   color: var(--text3);

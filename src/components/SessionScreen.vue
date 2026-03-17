@@ -71,7 +71,7 @@
             <div class="slide-inner">
               <Stage1
                 v-if="((idx === displayIndex ? (displayWord ?? currentWord) : word)?.stage ?? 1) === 1"
-                :key="(word?.id ?? '') + '-s1-' + questionKey + '-' + contentRefreshKey + '-' + (idx === displayIndex ? 'active' : '')"
+                :key="'s1-' + (word?.id ?? idx)"
                 :word="idx === displayIndex ? (displayWord ?? currentWord) : word"
                 :distractorPool="distractorPool"
                 :feedback="idx === displayIndex ? feedback : null"
@@ -82,7 +82,7 @@
               />
               <Stage2
                 v-else-if="(idx === displayIndex ? (displayWord ?? currentWord) : word)?.stage === 2"
-                :key="(word?.id ?? '') + '-s2-' + questionKey + '-' + contentRefreshKey + '-' + (idx === displayIndex ? 'active' : '')"
+                :key="'s2-' + (word?.id ?? idx)"
                 :word="idx === displayIndex ? (displayWord ?? currentWord) : word"
                 :feedback="idx === displayIndex ? feedback : null"
                 :sessionStats="idx === displayIndex ? sessionStats : null"
@@ -92,7 +92,7 @@
               />
               <Stage3
                 v-else-if="(idx === displayIndex ? (displayWord ?? currentWord) : word)?.stage === 3"
-                :key="(word?.id ?? '') + '-s3-' + questionKey + '-' + contentRefreshKey + '-' + (idx === displayIndex ? 'active' : '')"
+                :key="'s3-' + (word?.id ?? idx)"
                 :word="idx === displayIndex ? (displayWord ?? currentWord) : word"
                 :useCorrect="s3UseCorrect"
                 :feedback="idx === displayIndex ? feedback : null"
@@ -114,7 +114,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, provide, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { Swiper, SwiperSlide } from 'swiper/vue'
 import 'swiper/css'
 import { useSession } from '../composables/useSession.js'
@@ -229,6 +229,13 @@ function onSlideChange(swiper) {
   nextTick(() => { nextLock.value = false })
 }
 
+// شبكة أمان: إذا انتهت الكلمات أثناء phase=question (مثلاً بعد إزالة آخر كلمة)، انتقل لشاشة النهاية
+watch([() => phase.value, currentWord, displayOrder], () => {
+  if (phase.value === 'question' && displayOrder.value.length === 0) {
+    phase.value = 'end'
+  }
+}, { immediate: true })
+
 onUnmounted(() => {
   sessionAudio.stopAudio()
 })
@@ -288,6 +295,11 @@ async function onAnswered(isCorrect) {
     answeringLock.value = false
   }
   if (!result) return
+  // إذا انتهت كل الكلمات، انتقل مباشرة لشاشة النهاية
+  if (remaining.value === 0) {
+    phase.value = 'end'
+    return
+  }
   stage3Explanation.value = ''
   stage3ExplanationLoading.value = false
   if (wordSnapshot?.stage === 3) {

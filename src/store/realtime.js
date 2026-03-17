@@ -53,14 +53,15 @@ export function getStats() {
   const todayAnswered = state.sessions
     .filter((s) => s.date === todayStr)
     .reduce((sum, s) => sum + (s.answered || 0), 0)
-  const availableToday = words.filter((w) => {
+  const eligibleToday = words.filter((w) => {
     if (w.status !== 'learning') return false
     const c1 = String(w.cycle_1_completed_date ?? '').slice(0, 10)
     const c2 = String(w.cycle_2_completed_date ?? '').slice(0, 10)
     const c3 = String(w.cycle_3_completed_date ?? '').slice(0, 10)
     return c1 !== todayStr && c2 !== todayStr && c3 !== todayStr
   }).length
-  return { total, mastered, learning, waiting, todayAnswered, availableToday }
+  const poolSize = state.settings?.pool_size ?? 20
+  return { total, mastered, learning, waiting, todayAnswered, availableToday: poolSize, poolSize, eligibleToday }
 }
 
 export function today() {
