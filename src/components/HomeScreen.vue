@@ -31,8 +31,8 @@
         <div class="stat-num">{{ stats.todayAnswered }}</div>
         <div class="stat-label">Questions Today</div>
       </div>
-      <div class="stat-item" title="Actual / Max words for today (1 cycle per word per day)">
-        <div class="stat-num">{{ stats.eligibleToday }}/{{ stats.sessionLimit }}</div>
+      <div class="stat-item" title="Words you can practice today">
+        <div class="stat-num">{{ stats.eligibleToday }}</div>
         <div class="stat-label">Available Today</div>
       </div>
     </div>
