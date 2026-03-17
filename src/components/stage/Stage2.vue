@@ -1,6 +1,15 @@
 <template>
   <div class="stage2-root">
     <div v-if="isPlaceholder" class="card placeholder-only">
+      <div class="card-toolbar">
+        <button class="toolbar-btn generate" :disabled="generating" @click="onGenerateComplete" title="Generate content">
+          {{ generating ? '⏳' : '☁️' }}
+        </button>
+        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
+          {{ isMuted ? '🔇' : '🔊' }}
+        </button>
+        <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
+      </div>
       <div class="placeholder-warn">
         <span>⚠️ Placeholder content — AI content not generated yet.</span>
         <div class="placeholder-actions">
@@ -11,38 +20,56 @@
         </div>
       </div>
     </div>
-    <div v-else ref="cardEl" class="card swipe-card">
+    <div
+      v-else
+      ref="cardEl"
+      class="card swipe-card"
+      :class="{ 'feedback-correct': feedback?.type === 'correct', 'feedback-wrong': feedback?.type === 'wrong' }"
+    >
+      <div v-if="sessionStats" class="card-stats">
+        <SessionStatsBar :stats="sessionStats" />
+      </div>
+      <div class="card-toolbar">
+        <button class="toolbar-btn generate" :disabled="generating" @click.stop="onGenerateComplete" title="Generate content">
+          {{ generating ? '⏳' : '☁️' }}
+        </button>
+        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
+          {{ isMuted ? '🔇' : '🔊' }}
+        </button>
+        <button class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
+      </div>
       <div class="definition-label">Fill in the blank</div>
-      <button class="card-action" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
-        {{ isMuted ? '🔇' : '🔊' }}
-      </button>
       <div
         class="sentence-text"
         :class="{ revealed, tappable: !revealed }"
-        @click="() => { if (!revealed) onShowAnswer() }"
+        @click="onSentenceClick"
       >
         <span class="sentence-part">{{ part1 }}</span>
-        <span class="blank-with-hint">
-          <span class="meaning-hint-small">{{ currentMeaning }}</span>
+        <span class="blank-wrap">
+          <span class="meaning-inline">{{ currentMeaning }}</span>
           <span class="blank" :class="{ filled: revealed }">{{ revealed ? word.word : '…' }}</span>
-          <span class="hint-spacer" v-if="!revealed"></span>
         </span>
         <span class="sentence-part">{{ part2 }}</span>
       </div>
-      <div v-if="revealed" class="swipe-hint">← swipe ✗ &nbsp;|&nbsp; swipe ✓ →</div>
+      <div v-if="revealed && !answered" class="tap-zones">
+        <div class="tap-zone tap-wrong" @click.stop="answer(false)">✗</div>
+        <div class="tap-zone tap-correct" @click.stop="answer(true)">✓</div>
+      </div>
+      <div v-if="revealed" class="swipe-hint">← tap ✗ &nbsp;|&nbsp; tap ✓ →</div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import SessionStatsBar from '../SessionStatsBar.vue'
 import { useAudio } from '../../composables/useAudio.js'
 import { useSwipe } from '../../composables/useSwipe.js'
 import { generateWordComplete } from '../../store/data.js'
 import { refetchWord } from '../../store/realtime.js'
 import { getCurrentUser } from '../../store/sync.js'
 
-const props = defineProps({ word: Object })
+const props = defineProps({ word: Object, feedback: Object, sessionStats: Object })
 const emit = defineEmits(['answered', 'skip', 'content-generated'])
 
 const { playWord, playTextAI, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
@@ -150,10 +177,12 @@ async function onGenerateComplete() {
   }
 }
 
-function onShowAnswer() {
-  stopAudio()
-  revealed.value = true
-  playWord(props.word, 5)
+function onSentenceClick() {
+  if (!revealed.value) {
+    stopAudio()
+    revealed.value = true
+    playWord(props.word, 5)
+  }
 }
 
 function answer(val) {
@@ -213,34 +242,30 @@ function answer(val) {
   margin-bottom: 16px;
   font-weight: 400;
 }
-.blank-with-hint {
+.blank-wrap {
   display: inline-flex;
   flex-direction: column;
   align-items: center;
   vertical-align: middle;
-  margin: 0 6px;
-  width: fit-content;
+  margin: 0 4px;
 }
-.meaning-hint-small {
-  font-size: 0.667em;
-  color: var(--gold);
-  font-family: 'DM Sans', sans-serif;
-  margin-bottom: 8px;
-  font-weight: 400;
-  max-width: 360px;
+.meaning-inline {
+  font-size: 0.5em;
+  line-height: 1.3;
+  color: var(--text2);
+  font-family: inherit;
   text-align: center;
-  line-height: 1.4;
-}
-.hint-spacer {
-  height: calc(0.667em + 8px);
+  max-width: 280px;
+  margin-bottom: 2px;
 }
 .blank {
-  display: block;
+  display: inline-block;
   min-width: 60px;
-  border-bottom: 1px solid var(--gold);
-  padding: 0 4px;
+  border-bottom: 2px solid var(--gold);
+  padding: 0 4px 2px;
+  vertical-align: baseline;
 }
-.blank:not(.filled) { min-height: 1.2em; }
+.blank:not(.filled) { min-height: 1em; }
 .blank.filled { border-color: var(--gold2); }
 .sentence-part {
   vertical-align: middle;
@@ -251,6 +276,37 @@ function answer(val) {
   display: block; margin-top: 8px;
 }
 .blank.filled { color: var(--gold2); font-weight: 600; }
+.tap-zones {
+  display: flex;
+  gap: 0;
+  margin-top: 16px;
+  min-height: 56px;
+}
+.tap-zone {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tap-zone:active { transform: scale(0.97); }
+.tap-wrong {
+  background: rgba(224, 92, 92, 0.15);
+  color: var(--red);
+  margin-right: 6px;
+}
+.tap-wrong:hover { background: rgba(224, 92, 92, 0.25); }
+.tap-correct {
+  background: rgba(76, 175, 130, 0.15);
+  color: var(--green);
+  margin-left: 6px;
+}
+.tap-correct:hover { background: rgba(76, 175, 130, 0.25); }
 .swipe-hint {
   font-size: 0.8rem;
   color: var(--text3);
@@ -258,30 +314,60 @@ function answer(val) {
   text-align: center;
 }
 .swipe-card {
-  touch-action: pan-y;
-}
-.card-action {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--surface2);
   border: 1px solid var(--border);
+  transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
+  padding-right: 120px;
+}
+.swipe-card.feedback-correct {
+  background: rgba(76, 175, 130, 0.12) !important;
+  border: 2px solid var(--green) !important;
+}
+.swipe-card.feedback-wrong {
+  background: rgba(224, 92, 92, 0.15) !important;
+  border: 2px solid var(--red) !important;
+}
+.swipe-card { touch-action: pan-y; }
+.card-stats { flex-shrink: 0; width: 100%; }
+.card-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+}
+.toolbar-btn {
+  width: 66px;
+  height: 66px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
   color: var(--text2);
-  font-size: 1rem;
+  font-size: 1.8rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
 }
-.card-action:hover { border-color: var(--gold); color: var(--gold); }
+.toolbar-btn:hover { border-color: var(--gold); color: var(--gold); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.toolbar-btn:active { transform: translateY(0); }
+.toolbar-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .stage2-root {
   display: flex; flex-direction: column; min-height: 0;
 }
 .stage2-root .card { flex-shrink: 0; position: relative; }
-.card.placeholder-only { display: flex; align-items: center; justify-content: center; min-height: 200px; }
+.card.placeholder-only {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding-right: 120px;
+}
 .placeholder-warn {
   display: flex;
   align-items: center;

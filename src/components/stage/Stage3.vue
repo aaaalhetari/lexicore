@@ -1,6 +1,15 @@
 <template>
   <div class="stage3-root">
     <div v-if="isPlaceholder" class="card placeholder-only">
+      <div class="card-toolbar">
+        <button class="toolbar-btn generate" :disabled="generating" @click="onGenerateComplete" title="Generate content">
+          {{ generating ? '⏳' : '☁️' }}
+        </button>
+        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
+          {{ isMuted ? '🔇' : '🔊' }}
+        </button>
+        <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
+      </div>
       <div class="placeholder-warn">
         <span>⚠️ Placeholder content — AI content not generated yet.</span>
         <div class="placeholder-actions">
@@ -11,26 +20,45 @@
         </div>
       </div>
     </div>
-    <div v-else ref="cardEl" class="card swipe-card">
+    <div
+      v-else
+      ref="cardEl"
+      class="card swipe-card"
+      :class="{ 'feedback-correct': feedback?.type === 'correct', 'feedback-wrong': feedback?.type === 'wrong' }"
+    >
+      <div v-if="sessionStats" class="card-stats">
+        <SessionStatsBar :stats="sessionStats" />
+      </div>
+      <div class="card-toolbar">
+        <button class="toolbar-btn generate" :disabled="generating" @click.stop="onGenerateComplete" title="Generate content">
+          {{ generating ? '⏳' : '☁️' }}
+        </button>
+        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
+          {{ isMuted ? '🔇' : '🔊' }}
+        </button>
+        <button class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
+      </div>
       <div class="definition-label">Is this sentence correct?</div>
-      <button class="card-action" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
-        {{ isMuted ? '🔇' : '🔊' }}
-      </button>
       <div class="stage3-sentence" v-html="displaySentence"></div>
-      <div class="swipe-hint">← swipe ✗ &nbsp;|&nbsp; swipe ✓ →</div>
+      <div v-if="!answered" class="tap-zones">
+        <div class="tap-zone tap-wrong" @click.stop="answer(false)">✗</div>
+        <div class="tap-zone tap-correct" @click.stop="answer(true)">✓</div>
+      </div>
+      <div class="swipe-hint">← tap ✗ &nbsp;|&nbsp; tap ✓ →</div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import SessionStatsBar from '../SessionStatsBar.vue'
 import { useAudio } from '../../composables/useAudio.js'
 import { useSwipe } from '../../composables/useSwipe.js'
 import { generateWordComplete } from '../../store/data.js'
 import { refetchWord } from '../../store/realtime.js'
 import { getCurrentUser } from '../../store/sync.js'
 
-const props = defineProps({ word: Object, useCorrect: Boolean })
+const props = defineProps({ word: Object, useCorrect: Boolean, feedback: Object, sessionStats: Object })
 const emit = defineEmits(['answered', 'skip', 'content-generated'])
 
 const { playWord, playTextAI, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
@@ -223,6 +251,37 @@ function answer(chosen) {
   justify-content: center;
 }
 .card-action:hover { border-color: var(--gold); color: var(--gold); }
+.tap-zones {
+  display: flex;
+  gap: 0;
+  margin-top: 16px;
+  min-height: 56px;
+}
+.tap-zone {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.tap-zone:active { transform: scale(0.97); }
+.tap-wrong {
+  background: rgba(224, 92, 92, 0.15);
+  color: var(--red);
+  margin-right: 6px;
+}
+.tap-wrong:hover { background: rgba(224, 92, 92, 0.25); }
+.tap-correct {
+  background: rgba(76, 175, 130, 0.15);
+  color: var(--green);
+  margin-left: 6px;
+}
+.tap-correct:hover { background: rgba(76, 175, 130, 0.25); }
 .swipe-hint {
   font-size: 0.8rem;
   color: var(--text3);
@@ -231,12 +290,59 @@ function answer(chosen) {
 }
 .swipe-card {
   touch-action: pan-y;
+  border: 1px solid var(--border);
+  transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
+  padding-right: 120px;
+}
+.card-stats { flex-shrink: 0; width: 100%; }
+.card-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+}
+.toolbar-btn {
+  width: 66px;
+  height: 66px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 1.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.toolbar-btn:hover { border-color: var(--gold); color: var(--gold); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.toolbar-btn:active { transform: translateY(0); }
+.toolbar-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.swipe-card.feedback-correct {
+  background: rgba(76, 175, 130, 0.12) !important;
+  border: 2px solid var(--green) !important;
+}
+.swipe-card.feedback-wrong {
+  background: rgba(224, 92, 92, 0.15) !important;
+  border: 2px solid var(--red) !important;
 }
 .stage3-root {
   display: flex; flex-direction: column; min-height: 0;
 }
 .stage3-root .card { flex-shrink: 0; }
-.card.placeholder-only { display: flex; align-items: center; justify-content: center; min-height: 200px; }
+.card.placeholder-only {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding-right: 120px;
+}
 .placeholder-warn {
   display: flex;
   align-items: center;

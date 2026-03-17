@@ -37,6 +37,16 @@
       </div>
     </div>
 
+    <!-- Add Word (compact) -->
+    <div class="add-word-card">
+      <h3 class="add-word-title">+ Add Word</h3>
+      <div class="add-word-row">
+        <input v-model="addForm.word" placeholder="Word" class="form-input" @keydown.enter="onAddWord">
+        <input v-model="addForm.definition" placeholder="Definition" class="form-input" @keydown.enter="onAddWord">
+        <button class="btn btn-primary" @click="onAddWord">Add</button>
+      </div>
+    </div>
+
     <!-- Action Cards -->
     <div class="home-actions">
       <div class="home-card" @click="$emit('start')">
@@ -49,15 +59,36 @@
         <h3>Word List</h3>
         <p>View all your words</p>
       </div>
+      <div class="home-card" @click="$emit('settings')">
+        <div class="card-icon">⚙️</div>
+        <h3>Settings</h3>
+        <p>Account & preferences</p>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { getStats } from '../store/data.js'
+import { ref, computed } from 'vue'
+import { getStats, addWord } from '../store/data.js'
 
-defineEmits(['start', 'words'])
+defineEmits(['start', 'words', 'settings'])
+
+const addForm = ref({ word: '', definition: '' })
+
+async function onAddWord() {
+  const { word, definition } = addForm.value
+  if (!word.trim() || !definition.trim()) {
+    alert('Word and definition are required.')
+    return
+  }
+  const ok = await addWord({ word: word.trim(), definition: definition.trim() })
+  if (!ok) {
+    alert(`"${word}" already exists.`)
+    return
+  }
+  addForm.value = { word: '', definition: '' }
+}
 
 const stats = computed(() => getStats())
 </script>
@@ -87,7 +118,25 @@ const stats = computed(() => getStats())
 .stat-num { font-family: 'JetBrains Mono', monospace; font-size: 1.45rem; font-weight: 500; color: var(--gold); }
 .stat-label { font-size: 0.75rem; color: var(--text3); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-.home-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 24px; }
+.add-word-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.add-word-title { font-size: 0.9rem; color: var(--text3); margin-bottom: 12px; }
+.add-word-row {
+  display: flex; gap: 10px; flex-wrap: wrap;
+}
+.add-word-row .form-input {
+  flex: 1; min-width: 120px;
+  background: var(--surface2); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius-sm);
+  padding: 10px 14px; font-size: 1rem; outline: none;
+  font-family: 'DM Sans', sans-serif;
+}
+.add-word-row .form-input:focus { border-color: var(--gold); }
+
+.home-actions { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-top: 24px; }
 .home-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 24px 20px;

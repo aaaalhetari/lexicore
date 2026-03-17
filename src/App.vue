@@ -1,10 +1,10 @@
 <template>
   <div class="app-loading" v-if="loading">Loading words…</div>
   <div class="app" v-else>
-    <!-- HEADER -->
+    <!-- HEADER: hide nav on session (stats in card) -->
     <div class="header">
       <div class="logo">LexiCore <span>v2.0</span></div>
-      <div class="header-btns">
+      <div v-if="screen !== 'session'" class="header-btns">
         <button class="icon-btn" @click="goTo('words')" title="Word List">📚</button>
         <button class="icon-btn" @click="goTo('settings')" title="Settings">⚙️</button>
       </div>
@@ -13,7 +13,7 @@
     <!-- SCREENS -->
     <div class="content">
       <Transition name="fade" mode="out-in">
-        <HomeScreen     v-if="screen === 'home'"     @start="goTo('session')" @words="goTo('words')" />
+        <HomeScreen     v-if="screen === 'home'"     @start="goTo('session')" @words="goTo('words')" @settings="goTo('settings')" />
         <SessionScreen  v-else-if="screen === 'session'"  @end="goTo('home')" @goToSettings="goTo('settings')" />
         <SettingsScreen v-else-if="screen === 'settings'" @back="goTo('home')" />
         <WordListScreen v-else-if="screen === 'words'"    @back="goTo('home')" />
@@ -23,7 +23,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, provide } from 'vue'
 import { subscribeRealtime, unsubscribeRealtime } from './store/realtime.js'
 import { getCurrentUser } from './store/sync.js'
 import { checkRefillNeeded } from './store/data.js'
@@ -34,6 +34,7 @@ import WordListScreen from './components/WordListScreen.vue'
 
 const screen = ref('home')
 const loading = ref(true)
+provide('locale', typeof document !== 'undefined' ? document.documentElement.lang || 'en' : 'en')
 
 function goTo(name) {
   screen.value = name

@@ -1,6 +1,15 @@
 <template>
   <div class="stage1-root">
     <div v-if="isPlaceholder" class="card placeholder-only">
+      <div class="card-toolbar">
+        <button class="toolbar-btn generate" :disabled="generating" @click="onGenerateComplete" title="Generate content">
+          {{ generating ? '⏳' : '☁️' }}
+        </button>
+        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
+          {{ isMuted ? '🔇' : '🔊' }}
+        </button>
+        <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
+      </div>
       <div class="placeholder-warn">
         <span>⚠️ Placeholder content — AI content not generated yet.</span>
         <div class="placeholder-actions">
@@ -11,41 +20,54 @@
         </div>
       </div>
     </div>
-    <template v-else>
-    <div class="card" @click="onCardTap">
+    <div
+      v-else
+      class="card unified-card"
+      :class="{ 'feedback-correct': feedback?.type === 'correct', 'feedback-wrong': feedback?.type === 'wrong' }"
+      @click="onCardTap"
+    >
+      <div class="card-toolbar">
+        <button class="toolbar-btn generate" :disabled="generating" @click.stop="onGenerateComplete" title="Generate content">
+          {{ generating ? '⏳' : '☁️' }}
+        </button>
+        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
+          {{ isMuted ? '🔇' : '🔊' }}
+        </button>
+        <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
+      </div>
+      <div v-if="sessionStats" class="card-stats">
+        <SessionStatsBar :stats="sessionStats" />
+      </div>
       <div class="definition-label">Definition</div>
       <div class="definition-text">{{ currentDefinition }}</div>
-      <button class="card-action" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
-        {{ isMuted ? '🔇' : '🔊' }}
-      </button>
+      <div class="choices-inline">
+        <button
+          v-for="choice in choices"
+          :key="choice.id"
+          class="choice-btn"
+          :class="{
+            correct: answered && choice.id === word.id,
+            wrong: answered && chosen === choice.id && choice.id !== word.id,
+          }"
+          :disabled="answered"
+          @click.stop="answer(choice.id)"
+        >
+          {{ choice.word }}
+        </button>
+      </div>
     </div>
-    <div class="choices">
-      <button
-        v-for="choice in choices"
-        :key="choice.id"
-        class="choice-btn"
-        :class="{
-          correct: answered && choice.id === word.id,
-          wrong: answered && chosen === choice.id && choice.id !== word.id,
-        }"
-        :disabled="answered"
-        @click="answer(choice.id)"
-      >
-        {{ choice.word }}
-      </button>
-    </div>
-    </template>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import SessionStatsBar from '../SessionStatsBar.vue'
 import { useAudio } from '../../composables/useAudio.js'
 import { generateWordComplete } from '../../store/data.js'
 import { refetchWord } from '../../store/realtime.js'
 import { getCurrentUser } from '../../store/sync.js'
 
-const props = defineProps({ word: Object, distractorPool: Array })
+const props = defineProps({ word: Object, distractorPool: Array, feedback: Object, sessionStats: Object })
 const emit = defineEmits(['answered', 'skip', 'content-generated'])
 
 const { playWord, playTextAI, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
@@ -204,20 +226,66 @@ function answer(id) {
 .audio-btn.muted {
   opacity: 0.6;
 }
-.choices {
+.unified-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border: 1px solid var(--border);
+  transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
+  padding-right: 120px;
+}
+.card-stats { flex-shrink: 0; width: 100%; }
+.card-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+}
+.toolbar-btn {
+  width: 66px;
+  height: 66px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 1.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.toolbar-btn:hover { border-color: var(--gold); color: var(--gold); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.toolbar-btn:active { transform: translateY(0); }
+.toolbar-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.toolbar-btn.exit { order: 3; }
+.toolbar-btn.audio { order: 2; }
+.toolbar-btn.generate { order: 1; }
+.unified-card.feedback-correct {
+  background: rgba(76, 175, 130, 0.12) !important;
+  border: 2px solid var(--green) !important;
+}
+.unified-card.feedback-wrong {
+  background: rgba(224, 92, 92, 0.15) !important;
+  border: 2px solid var(--red) !important;
+}
+.choices-inline {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
-  align-content: end;
+  gap: 10px;
+  margin-top: 4px;
 }
 .choice-btn {
   background: var(--surface2);
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 16px 18px;
-  min-height: 52px;
+  padding: 12px 14px;
+  min-height: 44px;
   cursor: pointer;
   transition: all 0.2s;
   text-align: left;
@@ -250,24 +318,14 @@ function answer(id) {
   position: relative;
   cursor: pointer;
 }
-.card-action {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text2);
-  font-size: 1rem;
-  cursor: pointer;
+.card.placeholder-only {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  min-height: 200px;
+  padding-right: 120px;
 }
-.card-action:hover { border-color: var(--gold); color: var(--gold); }
-.card.placeholder-only { display: flex; align-items: center; justify-content: center; min-height: 200px; }
 .placeholder-warn {
   display: flex;
   align-items: center;
