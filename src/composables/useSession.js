@@ -155,7 +155,7 @@ export function useSession() {
     const allWords = getWords()
     const distractors = [...dedupedPool]
     const extras = allWords.filter((w) => !poolIds.has(String(w.id)) && w.status !== 'mastered')
-    const poolSize = getSettings()?.pool_size ?? 20
+    const poolSize = getSettings()?.new_words_per_session ?? getSettings()?.pool_size ?? 20
     const minDistractors = 4
     for (let i = 0; distractors.length < Math.max(poolSize, minDistractors) && i < extras.length; i++) {
       distractors.push(extras[i])

@@ -79,11 +79,12 @@ export async function updateSettings(settings) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
+  const wordsPerSession = settings.new_words_per_session ?? settings.pool_size ?? 20
   await supabase.from('user_settings').upsert(
     {
       user_id: user.id,
-      new_words_per_session: settings.new_words_per_session,
-      pool_size: settings.pool_size,
+      new_words_per_session: wordsPerSession,
+      pool_size: wordsPerSession,
       cycle_1: settings.cycle_1,
       cycle_2: settings.cycle_2,
       cycle_3: settings.cycle_3,

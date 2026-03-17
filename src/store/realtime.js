@@ -60,8 +60,8 @@ export function getStats() {
     const c3 = String(w.cycle_3_completed_date ?? '').slice(0, 10)
     return c1 !== todayStr && c2 !== todayStr && c3 !== todayStr
   }).length
-  const poolSize = state.settings?.pool_size ?? 20
-  return { total, mastered, learning, waiting, todayAnswered, availableToday: poolSize, poolSize, eligibleToday }
+  const wordsPerSession = state.settings?.new_words_per_session ?? state.settings?.pool_size ?? 20
+  return { total, mastered, learning, waiting, todayAnswered, availableToday: wordsPerSession, eligibleToday }
 }
 
 export function today() {

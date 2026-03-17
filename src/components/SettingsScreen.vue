@@ -12,12 +12,8 @@
       <div class="settings-section">
         <h3>Session</h3>
         <div class="setting-row">
-          <div><div class="setting-label">Words per session</div><div class="setting-desc">Total words per session (learning + new)</div></div>
+          <div><div class="setting-label">Total words for today session (learning + new)</div><div class="setting-desc">Words per session, reservoir refill, and distractors</div></div>
           <input class="setting-input" type="number" min="1" max="50" v-model.number="local.new_words_per_session">
-        </div>
-        <div class="setting-row">
-          <div><div class="setting-label">Pool size</div><div class="setting-desc">Words used for Stage 1 distractors</div></div>
-          <input class="setting-input" type="number" min="4" max="50" v-model.number="local.pool_size">
         </div>
       </div>
       <div class="settings-section">
@@ -117,7 +113,6 @@ onMounted(async () => {
 // Local copy of settings for editing
 const local = reactive({
   new_words_per_session: 20,
-  pool_size: 20,
   cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
   cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
   cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -126,8 +121,7 @@ const local = reactive({
 onMounted(() => {
   snapshot.value = snapshotSettings()
   const s = getSettings()
-  local.new_words_per_session = s.new_words_per_session
-  local.pool_size = s.pool_size
+  local.new_words_per_session = s.new_words_per_session ?? s.pool_size ?? 20
   for (let c = 1; c <= 3; c++) {
     for (let st = 1; st <= 3; st++) {
       local[`cycle_${c}`][`stage_${st}_required`] = s[`cycle_${c}`][`stage_${st}_required`]
@@ -143,8 +137,7 @@ async function save() {
 function cancel() {
   const restored = restoreSettings(snapshot.value)
   if (restored) {
-    local.new_words_per_session = restored.new_words_per_session
-    local.pool_size = restored.pool_size
+    local.new_words_per_session = restored.new_words_per_session ?? restored.pool_size ?? 20
     for (let c = 1; c <= 3; c++) {
       for (let st = 1; st <= 3; st++) {
         local[`cycle_${c}`][`stage_${st}_required`] = restored[`cycle_${c}`]?.[`stage_${st}_required`]
