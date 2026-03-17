@@ -1,9 +1,8 @@
--- LexiCore v2: Postgres Functions for Queue Management & Answer Handling
+-- Fix: Function Search Path Mutable SECURITY
+-- Run in Supabase SQL Editor to resolve security alerts
+-- Adds set search_path = '' to all SECURITY DEFINER functions
 
--- =============================================================================
--- 1. ADVANCE CYCLES (spaced repetition: move to next cycle after 1 day)
--- =============================================================================
-
+-- 1. advance_cycles
 create or replace function public.advance_cycles(p_user_id uuid)
 returns void as $$
 declare
@@ -31,14 +30,11 @@ begin
       and (v_today - cycle_2_completed_date) >= 1 then 0
     else consecutive_correct
   end
-  where user_id = p_user_id and status = 'learning';
+  where public.vocabulary.user_id = p_user_id and public.vocabulary.status = 'learning';
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 
--- =============================================================================
--- 2. GET ACTIVE POOL (10 words, stage-aware, weighted-ready)
--- =============================================================================
-
+-- 2. get_active_pool (includes jsonb fix)
 create or replace function public.get_active_pool(p_user_id uuid)
 returns table (
   id bigint,
@@ -66,7 +62,6 @@ declare
   v_waiting_count int;
   v_to_promote int;
 begin
-  -- Advance cycles first
   perform public.advance_cycles(p_user_id);
 
   select coalesce(
@@ -80,48 +75,46 @@ begin
       "new_words_per_session":10,"pool_size":20}'::jsonb
   ) into v_settings;
 
-  -- Count active words per stage (not completed today)
-  select count(*) from public.vocabulary
-  where user_id = p_user_id and status = 'learning'
-    and (case cycle
-      when 1 then cycle_1_completed_date is null or cycle_1_completed_date <> v_today
-      when 2 then cycle_2_completed_date is null or cycle_2_completed_date <> v_today
-      when 3 then cycle_3_completed_date is null or cycle_3_completed_date <> v_today
+  select count(*) from public.vocabulary vc
+  where vc.user_id = p_user_id and vc.status = 'learning'
+    and (case vc.cycle
+      when 1 then vc.cycle_1_completed_date is null or vc.cycle_1_completed_date <> v_today
+      when 2 then vc.cycle_2_completed_date is null or vc.cycle_2_completed_date <> v_today
+      when 3 then vc.cycle_3_completed_date is null or vc.cycle_3_completed_date <> v_today
       else true
     end)
   into v_learning_count;
 
-  select count(*) from public.vocabulary
-  where user_id = p_user_id and status = 'learning' and stage = 1
-    and (case cycle when 1 then cycle_1_completed_date <> v_today or cycle_1_completed_date is null
-         when 2 then cycle_2_completed_date <> v_today or cycle_2_completed_date is null
-         when 3 then cycle_3_completed_date <> v_today or cycle_3_completed_date is null
+  select count(*) from public.vocabulary vc
+  where vc.user_id = p_user_id and vc.status = 'learning' and vc.stage = 1
+    and (case vc.cycle when 1 then vc.cycle_1_completed_date <> v_today or vc.cycle_1_completed_date is null
+         when 2 then vc.cycle_2_completed_date <> v_today or vc.cycle_2_completed_date is null
+         when 3 then vc.cycle_3_completed_date <> v_today or vc.cycle_3_completed_date is null
          else true end)
   into v_stage1_count;
 
-  select count(*) from public.vocabulary
-  where user_id = p_user_id and status = 'learning' and stage = 2
-    and (case cycle when 1 then cycle_1_completed_date <> v_today or cycle_1_completed_date is null
-         when 2 then cycle_2_completed_date <> v_today or cycle_2_completed_date is null
-         when 3 then cycle_3_completed_date <> v_today or cycle_3_completed_date is null
+  select count(*) from public.vocabulary vc
+  where vc.user_id = p_user_id and vc.status = 'learning' and vc.stage = 2
+    and (case vc.cycle when 1 then vc.cycle_1_completed_date <> v_today or vc.cycle_1_completed_date is null
+         when 2 then vc.cycle_2_completed_date <> v_today or vc.cycle_2_completed_date is null
+         when 3 then vc.cycle_3_completed_date <> v_today or vc.cycle_3_completed_date is null
          else true end)
   into v_stage2_count;
 
-  select count(*) from public.vocabulary
-  where user_id = p_user_id and status = 'learning' and stage = 3
-    and (case cycle when 1 then cycle_1_completed_date <> v_today or cycle_1_completed_date is null
-         when 2 then cycle_2_completed_date <> v_today or cycle_2_completed_date is null
-         when 3 then cycle_3_completed_date <> v_today or cycle_3_completed_date is null
+  select count(*) from public.vocabulary vc
+  where vc.user_id = p_user_id and vc.status = 'learning' and vc.stage = 3
+    and (case vc.cycle when 1 then vc.cycle_1_completed_date <> v_today or vc.cycle_1_completed_date is null
+         when 2 then vc.cycle_2_completed_date <> v_today or vc.cycle_2_completed_date is null
+         when 3 then vc.cycle_3_completed_date <> v_today or vc.cycle_3_completed_date is null
          else true end)
   into v_stage3_count;
 
-  -- If any stage has <= 3, promote from waiting
   if v_stage1_count <= 3 or v_stage2_count <= 3 or v_stage3_count <= 3 then
     v_to_promote := greatest(3 - least(v_stage1_count, v_stage2_count, v_stage3_count), 0);
     if v_to_promote > 0 then
       update public.vocabulary
       set status = 'learning', cycle = 1, stage = 1, consecutive_correct = 0
-      where id in (
+      where public.vocabulary.id in (
         select v2.id from public.vocabulary v2
         where v2.user_id = p_user_id and v2.status = 'waiting'
         order by v2.id
@@ -130,7 +123,6 @@ begin
     end if;
   end if;
 
-  -- Return active pool (10 words max, not completed today)
   return query
   select v.id, v.word, v.status, v.cycle, v.stage, v.consecutive_correct,
          v.stage1_definitions, v.stage2_sentences, v.stage3_correct, v.stage3_incorrect,
@@ -146,12 +138,9 @@ begin
   order by v.id
   limit 10;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 
--- =============================================================================
--- 3. SUBMIT ANSWER (update word, return result)
--- =============================================================================
-
+-- 3. submit_answer
 create or replace function public.submit_answer(
   p_user_id uuid,
   p_word_id bigint,
@@ -173,8 +162,8 @@ begin
 
   select coalesce(
     (select jsonb_build_object(
-      'cycle_1', cycle_1, 'cycle_2', cycle_2, 'cycle_3', cycle_3
-    ) from public.user_settings where user_id = p_user_id),
+      'cycle_1', us.cycle_1, 'cycle_2', us.cycle_2, 'cycle_3', us.cycle_3
+    ) from public.user_settings us where us.user_id = p_user_id),
     '{"cycle_1":{"stage_1_required":4,"stage_2_required":4,"stage_3_required":4},
       "cycle_2":{"stage_1_required":2,"stage_2_required":2,"stage_3_required":2},
       "cycle_3":{"stage_1_required":2,"stage_2_required":2,"stage_3_required":2}}'::jsonb
@@ -222,32 +211,21 @@ begin
 
   return v_result;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = '';
 
--- =============================================================================
--- 4. CHECK REFILL NEEDED (queue jobs for Edge Functions)
--- =============================================================================
-
+-- 4. check_refill_needed
 create or replace function public.check_refill_needed(p_user_id uuid)
 returns void as $$
 declare
   v_waiting_count int;
   v_learning_count int;
 begin
-  select count(*) into v_waiting_count from public.vocabulary
-  where user_id = p_user_id and status = 'waiting';
+  select count(*) into v_waiting_count from public.vocabulary vc
+  where vc.user_id = p_user_id and vc.status = 'waiting';
 
   if v_waiting_count < 10 then
     insert into public.refill_jobs (user_id, job_type, payload)
     values (p_user_id, 'reservoir', jsonb_build_object('count', 20));
   end if;
-
-  -- Stage content refill is checked per-word in Edge Function after content consumption
 end;
-$$ language plpgsql security definer;
-
--- Grant execute to authenticated users
-grant execute on function public.advance_cycles(uuid) to authenticated;
-grant execute on function public.get_active_pool(uuid) to authenticated;
-grant execute on function public.submit_answer(uuid, bigint, boolean) to authenticated;
-grant execute on function public.check_refill_needed(uuid) to authenticated;
+$$ language plpgsql security definer set search_path = '';

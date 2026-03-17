@@ -31,9 +31,9 @@
         <div class="stat-num">{{ stats.todayAnswered }}</div>
         <div class="stat-label">Questions Today</div>
       </div>
-      <div class="stat-item">
-        <div class="stat-num">{{ stats.learning }}</div>
-        <div class="stat-label">Under Learning</div>
+      <div class="stat-item" title="Max words you can practice today (1 cycle per word per day)">
+        <div class="stat-num">{{ stats.availableToday }}</div>
+        <div class="stat-label">Available Today</div>
       </div>
     </div>
 

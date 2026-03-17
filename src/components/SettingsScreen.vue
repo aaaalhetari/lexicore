@@ -66,6 +66,25 @@
           <p v-if="authError" class="auth-error">{{ authError }}</p>
         </div>
       </template>
+      <div v-if="user" class="audio-gen-section">
+        <h3>Audio storage</h3>
+        <button
+          class="btn btn-secondary migrate-btn"
+          :disabled="migratingAudio"
+          @click="runAudioMigration"
+          title="Move old audio to all-lexicore-audio folder and delete old files"
+        >
+          {{ migratingAudio ? 'Migrating…' : '📁 Migrate audio to new structure' }}
+        </button>
+        <button
+          class="btn btn-secondary cleanup-btn"
+          :disabled="cleaningAudio"
+          @click="runAudioCleanup"
+          title="Delete old folders (userId, tts), keep only all-lexicore-audio"
+        >
+          {{ cleaningAudio ? 'Cleaning…' : '🗑️ Delete old audio folders' }}
+        </button>
+      </div>
     </div>
 
     <!-- Sticky Buttons -->
@@ -78,7 +97,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { getSettings, updateSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON } from '../store/data.js'
+import { getSettings, updateSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON, migrateAudioStructure, cleanupOldAudio } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser, signInWithGitHub, signOut } from '../store/sync.js'
 
@@ -88,6 +107,8 @@ const snapshot = ref(null)
 const hasSync = hasSupabase()
 const user = ref(null)
 const authError = ref('')
+const migratingAudio = ref(false)
+const cleaningAudio = ref(false)
 
 onMounted(async () => {
   if (hasSync) user.value = await getCurrentUser()
@@ -161,6 +182,34 @@ async function handleSignOut() {
   await signOut()
   window.location.reload()
 }
+
+async function runAudioMigration() {
+  if (!hasSync || !user.value) return
+  if (!confirm('Migrate old audio files to all-lexicore-audio folder? Old files will be deleted.')) return
+  migratingAudio.value = true
+  try {
+    const result = await migrateAudioStructure()
+    alert(`Migration complete: ${result?.migrated ?? 0} migrated, ${result?.failed ?? 0} failed.`)
+  } catch (e) {
+    alert('Migration failed: ' + (e?.message || e))
+  } finally {
+    migratingAudio.value = false
+  }
+}
+
+async function runAudioCleanup() {
+  if (!hasSync || !user.value) return
+  if (!confirm('Delete all folders except all-lexicore-audio? This removes userId/ and tts/ folders permanently.')) return
+  cleaningAudio.value = true
+  try {
+    const result = await cleanupOldAudio()
+    alert(`Cleanup complete: ${result?.deleted ?? 0} files deleted.`)
+  } catch (e) {
+    alert('Cleanup failed: ' + (e?.message || e))
+  } finally {
+    cleaningAudio.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -215,4 +264,11 @@ async function handleSignOut() {
 .auth-form .form-input:focus { border-color: var(--gold); }
 .auth-actions { display: flex; gap: 10px; }
 .auth-error { font-size: 0.9rem; color: var(--red); margin-top: 4px; }
+
+.content-gen-section,
+.audio-gen-section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
+.content-gen-section .btn,
+.audio-gen-section .btn { margin-top: 8px; }
+.audio-gen-section .migrate-btn,
+.audio-gen-section .cleanup-btn { margin-left: 8px; }
 </style>

@@ -29,11 +29,24 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     )
 
-    const { data: jobs } = await supabase
+    // Reset jobs stuck in "processing" (from timed-out runs)
+    await supabase.from("refill_jobs").update({ status: "pending" }).eq("status", "processing")
+
+    // Prioritize tts_content (complete audio) > stage_content > audio > reservoir; process up to 6 per call
+    const { data: ttsJobs } = await supabase
       .from("refill_jobs")
       .select("*")
       .eq("status", "pending")
-      .limit(5)
+      .eq("job_type", "tts_content")
+      .limit(4)
+    const { data: otherJobs } = await supabase
+      .from("refill_jobs")
+      .select("*")
+      .eq("status", "pending")
+      .neq("job_type", "tts_content")
+      .order("job_type", { ascending: true })
+      .limit(4)
+    const jobs = [...(ttsJobs ?? []), ...(otherJobs ?? [])].slice(0, 6)
 
     if (!jobs?.length) {
       return new Response(
@@ -66,6 +79,12 @@ Deno.serve(async (req) => {
           })
         } else if (job.job_type === "audio") {
           await invokeFunction("generate-audio", {
+            user_id: job.user_id,
+            word_id: job.payload?.word_id,
+            word: job.payload?.word,
+          })
+        } else if (job.job_type === "tts_content") {
+          await invokeFunction("generate-all-tts-for-word", {
             user_id: job.user_id,
             word_id: job.payload?.word_id,
             word: job.payload?.word,

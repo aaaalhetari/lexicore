@@ -4,7 +4,7 @@
     <!-- HEADER -->
     <div class="header">
       <div class="logo">LexiCore <span>v2.0</span></div>
-      <div class="header-btns" v-if="screen !== 'session'">
+      <div class="header-btns">
         <button class="icon-btn" @click="goTo('words')" title="Word List">📚</button>
         <button class="icon-btn" @click="goTo('settings')" title="Settings">⚙️</button>
       </div>
@@ -13,8 +13,8 @@
     <!-- SCREENS -->
     <div class="content">
       <Transition name="fade" mode="out-in">
-        <HomeScreen     v-if="screen === 'home'"     @start="goTo('session')" />
-        <SessionScreen  v-else-if="screen === 'session'"  @end="goTo('home')" />
+        <HomeScreen     v-if="screen === 'home'"     @start="goTo('session')" @words="goTo('words')" />
+        <SessionScreen  v-else-if="screen === 'session'"  @end="goTo('home')" @goToSettings="goTo('settings')" />
         <SettingsScreen v-else-if="screen === 'settings'" @back="goTo('home')" />
         <WordListScreen v-else-if="screen === 'words'"    @back="goTo('home')" />
       </Transition>
@@ -40,10 +40,15 @@ function goTo(name) {
 }
 
 onMounted(async () => {
-  const user = await getCurrentUser()
-  await subscribeRealtime(user?.id ?? null)
-  if (user) checkRefillNeeded()
-  loading.value = false
+  try {
+    const user = await getCurrentUser()
+    await subscribeRealtime(user?.id ?? null)
+    if (user) checkRefillNeeded()
+  } catch (err) {
+    console.error('Init failed:', err)
+  } finally {
+    loading.value = false
+  }
 })
 
 onUnmounted(() => {
@@ -63,11 +68,16 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .header {
   display: flex; align-items: center; justify-content: space-between;
   padding: calc(var(--sp) * 1.1) 0 calc(var(--sp) * 1.6);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 .logo {
   font-family: 'Fraunces', serif;

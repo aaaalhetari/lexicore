@@ -6,8 +6,10 @@
 import { supabase, hasSupabase } from '../lib/supabase.js'
 import {
   getWords,
+  getWordById,
   getSettings as getRealtimeSettings,
   getStats as getRealtimeStats,
+  refetchWord,
 } from './realtime.js'
 
 export function today() {
@@ -41,7 +43,7 @@ export async function submitAnswer(wordId, isCorrect) {
   return data
 }
 
-/** Get active pool from backend (10 words, stage-aware) */
+/** Get active pool from backend (count from user_settings.new_words_per_session, stage-aware) */
 export async function getActivePool() {
   if (!hasSupabase()) return []
   const { data: { user } } = await supabase.auth.getUser()
@@ -111,6 +113,212 @@ export async function processRefillJobs() {
   return data
 }
 
+/** Migrate old audio files to all-lexicore-audio structure (one-time) */
+export async function migrateAudioStructure() {
+  if (!hasSupabase()) throw new Error('Supabase required')
+  const { data, error } = await supabase.functions.invoke('migrate-audio-structure')
+  if (error) throw error
+  return data
+}
+
+/** Delete old audio folders (userId, tts), keep only all-lexicore-audio */
+export async function cleanupOldAudio() {
+  if (!hasSupabase()) throw new Error('Supabase required')
+  const { data, error } = await supabase.functions.invoke('cleanup-old-audio')
+  if (error) throw error
+  return data
+}
+
+/** Create jobs to complete all vocabulary (content + audio), then process them */
+export async function completeVocabulary(userId) {
+  if (!hasSupabase()) throw new Error('Supabase required')
+  const { data, error } = await supabase.functions.invoke('complete-vocabulary', {
+    body: { user_id: userId },
+  })
+  if (error) throw error
+  return data
+}
+
+/** Generate complete content + audio for one word (card button) */
+export async function generateWordComplete(userId, wordId, word) {
+  if (!hasSupabase()) throw new Error('Supabase required')
+  const { data, error } = await supabase.functions.invoke('generate-word-complete', {
+    body: { user_id: userId, word_id: Number(wordId), word: (word ?? '').trim() },
+  })
+  if (error) throw error
+  return data
+}
+
+/** Get AI explanation for Stage 3 (fallback when not in DB) */
+export async function explainSentence(userId, word, sentence, isCorrect) {
+  if (!hasSupabase()) return null
+  const { data, error } = await supabase.functions.invoke('generate-content', {
+    body: {
+      user_id: userId || '',
+      job_type: 'explain_sentence',
+      word,
+      sentence,
+      is_correct: isCorrect,
+    },
+  })
+  if (error) {
+    const msg = data?.error ?? error?.message ?? String(error)
+    throw new Error(msg)
+  }
+  return data?.explanation ?? null
+}
+
+/** Generate AI content for a single word's stage (definitions, sentences) */
+export async function generateContentForWord(userId, wordId, word, stage) {
+  if (!hasSupabase()) throw new Error('Supabase not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env')
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Sign in required to generate content')
+  await supabase.auth.refreshSession()
+  const { data, error } = await supabase.functions.invoke('generate-content', {
+    body: { user_id: userId, job_type: 'stage_content', word_id: Number(wordId), word, stage },
+  })
+  if (error) {
+    const msg = data?.error ?? error?.message ?? String(error)
+    const is401 = String(error).includes('401') || (error?.context?.status === 401)
+    throw new Error(is401
+      ? 'Session expired. Please sign out and sign in again, then try again.'
+      : msg)
+  }
+  await refetchWord(wordId, userId)
+  // Retry refetch if DB replication may be delayed (up to 2 retries)
+  for (let i = 0; i < 2; i++) {
+    const w = getWordById(wordId)
+    if (w && hasRealContentForStage(w, stage)) break
+    await new Promise((r) => setTimeout(r, 800))
+    await refetchWord(wordId, userId)
+  }
+  return data
+}
+
+function hasRealContentForStage(word, stage) {
+  if (!word) return false
+  if (stage === 1) {
+    const defs = word.stage1_definitions ?? []
+    const correct = defs.find((d) => d.is_correct)
+    const text = (correct?.definition ?? '').trim()
+    const placeholder = `Definition for "${word.word ?? ''}"`
+    return text && text !== placeholder
+  }
+  if (stage === 2) {
+    const s2 = word.stage2_sentences ?? []
+    const first = s2[0]
+    const text = (first?.sentence ?? '').trim()
+    return text && text !== 'Use ___ in context.'
+  }
+  if (stage === 3) {
+    const c = (word.stage3_correct ?? [])[0]
+    const i = (word.stage3_incorrect ?? [])[0]
+    const placeholder = `Is "${word.word ?? ''}" used correctly?`
+    const cStr = (typeof c === 'string' ? c : String(c ?? '')).trim()
+    const iStr = (typeof i === 'string' ? i : String(i ?? '')).trim()
+    return (cStr && cStr !== placeholder) || (iStr && iStr !== placeholder)
+  }
+  return false
+}
+
+/** Generate audio for a single word - direct call (bypasses job queue) */
+export async function generateAudioForWord(userId, wordId, word) {
+  if (!hasSupabase()) return null
+  const { data, error } = await supabase.functions.invoke('generate-audio', {
+    body: { user_id: userId, word_id: Number(wordId), word },
+  })
+  if (error) {
+    const msg = error?.context?.error ?? data?.error ?? error?.message ?? String(error)
+    throw new Error(msg)
+  }
+  return data?.audio_word
+}
+
+/** Generate TTS for definition/sentence and save to vocabulary (sync with cloud) */
+export async function generateTTSForContent(userId, wordId, word, text, stage, index, subType) {
+  if (!hasSupabase()) return null
+  const body = {
+    user_id: userId,
+    word_id: Number(wordId),
+    word: (word ?? '').trim(),
+    text: (text ?? '').trim(),
+    stage,
+    index,
+  }
+  if (stage === 3 && subType) body.sub_type = subType
+  const { data, error } = await supabase.functions.invoke('generate-tts-for-content', { body })
+  if (error) {
+    const msg = error?.context?.error ?? data?.error ?? error?.message ?? String(error)
+    throw new Error(msg)
+  }
+  return data?.url
+}
+
+const _ttsCache = new Map()
+const _ttsPending = new Map()
+
+/** Preload TTS for a word's question content (call early to speed up playback) */
+export function preloadTTS(word) {
+  if (!hasSupabase() || !word) return
+  const stage = word.stage ?? 1
+  let text = ''
+  if (stage === 1) {
+    const defs = word.stage1_definitions ?? []
+    const correct = defs.find((d) => d.is_correct)
+    text = (correct?.definition ?? word.definition ?? '').trim() || `Definition for "${word.word ?? ''}"`
+  } else if (stage === 2) {
+    const s2 = word.stage2_sentences ?? []
+    const first = s2[0]
+    text = (first?.sentence ?? word.example ?? '').trim() || `Use ___ in context.`
+  } else if (stage === 3) {
+    const arr1 = word.stage3_correct ?? []
+    const arr2 = word.stage3_incorrect ?? []
+    const t1 = (arr1[0] ?? word.s3_correct ?? '').trim()
+    const t2 = (arr2[0] ?? word.s3_wrong ?? '').trim()
+    const fallback = `Is "${word.word ?? ''}" used correctly?`
+    if (t1) generateTTS(t1).catch(() => {})
+    if (t2 && t2 !== t1) generateTTS(t2).catch(() => {})
+    if (!t1 && !t2) generateTTS(fallback).catch(() => {})
+    return
+  }
+  if (text) generateTTS(text).catch(() => {})
+}
+
+/** Generate AI TTS for any text (definitions, sentences) */
+export async function generateTTS(text, retries = 2) {
+  if (!hasSupabase()) return null
+  const clean = (text || '').trim()
+  if (!clean) return null
+  const cached = _ttsCache.get(clean)
+  if (cached) return cached
+  const pending = _ttsPending.get(clean)
+  if (pending) return pending
+  const promise = (async () => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const { data, error } = await supabase.functions.invoke('generate-tts', {
+        body: { text: clean },
+      })
+      if (!error && data?.url) {
+        _ttsCache.set(clean, data.url)
+        return data.url
+      }
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)))
+      } else if (error) {
+        const msg = data?.error ?? error?.message ?? String(error)
+        throw new Error(msg)
+      }
+    }
+    return null
+  })()
+  _ttsPending.set(clean, promise)
+  try {
+    return await promise
+  } finally {
+    _ttsPending.delete(clean)
+  }
+}
+
 /** Export current progress as JSON (from realtime store) */
 export function downloadJSON() {
   const words = getWords()
@@ -131,6 +339,11 @@ export async function addWord(wordData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
 
+  const wordLower = (wordData.word || '').trim().toLowerCase()
+  if (!wordLower) return false
+  const existing = getWords().some((w) => w.word?.toLowerCase() === wordLower)
+  if (existing) return false
+
   const def = wordData.definition || `Definition for "${wordData.word}"`
   const { error } = await supabase.from('vocabulary').insert({
     user_id: user.id,
@@ -144,6 +357,7 @@ export async function addWord(wordData) {
     stage3_incorrect: wordData.s3_wrong ? [wordData.s3_wrong] : [],
   })
   if (error) return false
+  await checkRefillNeeded()
   return true
 }
 
@@ -175,6 +389,7 @@ export async function importCSV(text) {
     if (ok) added++
     existing.add(word)
   }
+  if (added > 0) await checkRefillNeeded()
   return added
 }
 

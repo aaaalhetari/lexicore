@@ -15,8 +15,28 @@ const state = reactive({
 
 let channel = null
 
+/** Normalize id for comparison (handles bigint/string/number from DB) */
+function sameId(a, b) {
+  if (a == null || b == null) return false
+  return String(a) === String(b) || Number(a) === Number(b)
+}
+
 export function getWords() {
   return state.words
+}
+
+/** Get word by id (handles string/number mismatch) */
+export function getWordById(wordId) {
+  return state.words.find((w) => sameId(w.id, wordId)) ?? null
+}
+
+/** Optimistically update word in store (call after submitAnswer to avoid realtime delay) */
+export function updateWordOptimistic(wordId, updates) {
+  const idx = state.words.findIndex((w) => sameId(w.id, wordId))
+  if (idx >= 0) {
+    const current = state.words[idx]
+    state.words.splice(idx, 1, { ...current, ...updates })
+  }
 }
 
 export function getSettings() {
@@ -33,7 +53,14 @@ export function getStats() {
   const todayAnswered = state.sessions
     .filter((s) => s.date === todayStr)
     .reduce((sum, s) => sum + (s.answered || 0), 0)
-  return { total, mastered, learning, waiting, todayAnswered }
+  const availableToday = words.filter((w) => {
+    if (w.status !== 'learning') return false
+    const c1 = String(w.cycle_1_completed_date ?? '').slice(0, 10)
+    const c2 = String(w.cycle_2_completed_date ?? '').slice(0, 10)
+    const c3 = String(w.cycle_3_completed_date ?? '').slice(0, 10)
+    return c1 !== todayStr && c2 !== todayStr && c3 !== todayStr
+  }).length
+  return { total, mastered, learning, waiting, todayAnswered, availableToday }
 }
 
 export function today() {
@@ -47,17 +74,38 @@ export function isReady() {
 /** Subscribe to vocabulary + load initial data */
 export async function subscribeRealtime(userId) {
   if (!hasSupabase() || !userId) {
+    state.settings = {
+      new_words_per_session: 20,
+      pool_size: 20,
+      cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
+      cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
+      cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
+    }
     state.ready = true
     return
   }
 
-  const { data: initial } = await supabase
+  const { data: initial, error: vocabError } = await supabase
     .from('vocabulary')
     .select('*')
     .eq('user_id', userId)
     .order('id')
 
-  state.words = (initial ?? []).map(normalizeWord)
+  if (vocabError) {
+    console.warn('Vocabulary fetch failed:', vocabError)
+    state.words = []
+  } else {
+    const seen = new Set()
+    state.words = (initial ?? [])
+      .map(normalizeWord)
+      .filter((w) => {
+        const key = String(w.id ?? '')
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
+  }
 
   const { data: settingsRow } = await supabase
     .from('user_settings')
@@ -112,19 +160,25 @@ function handleVocabularyChange(payload) {
   const { eventType, new: newRow, old: oldRow } = payload
 
   if (eventType === 'INSERT') {
-    state.words.push(normalizeWord(newRow))
-    state.words.sort((a, b) => a.id - b.id)
+    const exists = state.words.some((w) => sameId(w.id, newRow.id))
+    if (!exists) {
+      state.words.push(normalizeWord(newRow))
+      state.words.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
+    }
   } else if (eventType === 'UPDATE') {
-    const idx = state.words.findIndex((w) => w.id === newRow.id)
+    const idx = state.words.findIndex((w) => sameId(w.id, newRow.id))
     if (idx >= 0) {
-      state.words[idx] = normalizeWord(newRow)
+      state.words.splice(idx, 1, normalizeWord(newRow))
+    } else {
+      state.words.push(normalizeWord(newRow))
+      state.words.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
     }
   } else if (eventType === 'DELETE') {
-    state.words = state.words.filter((w) => w.id !== oldRow.id)
+    state.words = state.words.filter((w) => !sameId(w.id, oldRow.id))
   }
 }
 
-function normalizeWord(row) {
+export function normalizeWord(row) {
   return {
     id: row.id,
     word: row.word,
@@ -139,7 +193,13 @@ function normalizeWord(row) {
     stage2_sentences: row.stage2_sentences ?? [],
     stage3_correct: row.stage3_correct ?? [],
     stage3_incorrect: row.stage3_incorrect ?? [],
-    audio_url: row.audio_url,
+    stage3_explanations_correct: row.stage3_explanations_correct ?? [],
+    stage3_explanations_incorrect: row.stage3_explanations_incorrect ?? [],
+    audio_word: row.audio_word,
+    audio_stage1_definitions: row.audio_stage1_definitions ?? [],
+    audio_stage2_sentences: row.audio_stage2_sentences ?? [],
+    audio_stage3_correct: row.audio_stage3_correct ?? [],
+    audio_stage3_incorrect: row.audio_stage3_incorrect ?? [],
     definition: getCurrentDefinition(row),
     example: getCurrentExample(row),
     example_meaning: getCurrentExampleMeaning(row),
@@ -151,13 +211,15 @@ function normalizeWord(row) {
 function getCurrentDefinition(row) {
   const defs = row.stage1_definitions ?? []
   const correct = defs.find((d) => d.is_correct)
-  return correct?.definition ?? `Definition for "${row.word}"`
+  const s = (correct?.definition ?? '').trim()
+  return s || `Definition for "${row.word}"`
 }
 
 function getCurrentExample(row) {
   const s2 = row.stage2_sentences ?? []
   const first = s2[0]
-  return first?.sentence ?? `Use ___ in context.`
+  const s = (first?.sentence ?? '').trim()
+  return s || `Use ___ in context.`
 }
 
 function getCurrentExampleMeaning(row) {
@@ -168,12 +230,14 @@ function getCurrentExampleMeaning(row) {
 
 function getCurrentS3Correct(row) {
   const arr = row.stage3_correct ?? []
-  return arr[0] ?? `She used ${row.word} correctly.`
+  const s = (arr[0] ?? '').trim()
+  return s || `She used ${row.word} correctly.`
 }
 
 function getCurrentS3Wrong(row) {
   const arr = row.stage3_incorrect ?? []
-  return arr[0] ?? `He used ${row.word} incorrectly.`
+  const s = (arr[0] ?? '').trim()
+  return s || `He used ${row.word} incorrectly.`
 }
 
 export function unsubscribeRealtime() {
@@ -181,6 +245,30 @@ export function unsubscribeRealtime() {
     supabase.removeChannel(channel)
     channel = null
   }
+}
+
+/** Refetch a single word and update store (call after generateContentForWord) */
+export async function refetchWord(wordId, userId) {
+  if (!hasSupabase() || !userId || !wordId) return false
+  const { data, error } = await supabase
+    .from('vocabulary')
+    .select('*')
+    .eq('id', wordId)
+    .eq('user_id', userId)
+    .single()
+  if (error || !data) return false
+  const normalized = normalizeWord(data)
+  const idx = state.words.findIndex((w) => sameId(w.id, wordId))
+  if (idx >= 0) {
+    state.words.splice(idx, 1, normalized)
+  } else {
+    const exists = state.words.some((w) => sameId(w.id, wordId))
+    if (!exists) {
+      state.words.push(normalized)
+      state.words.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
+    }
+  }
+  return true
 }
 
 /** Refetch settings (call after updateSettings) */
