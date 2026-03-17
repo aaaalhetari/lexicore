@@ -29,7 +29,7 @@
       </div>
       <div class="stat-item" :title="t.availableTip">
         <span class="stat-lbl">{{ t.available }}</span>
-        <b>{{ stats.availableToday }}</b>
+        <b>{{ stats.eligibleToday }}/{{ stats.sessionLimit }}</b>
       </div>
       <div class="stat-item stat-cycles" :title="t.cycleTip">
         <span class="stat-lbl">{{ t.cycle }}</span>
@@ -72,7 +72,7 @@ const t = computed(() => {
     doneToday: 'تم اليوم',
     doneTodayTip: 'إجمالي الكلمات التي تمت اليوم',
     available: 'متاح',
-    availableTip: 'كلمات يمكنك ممارستها اليوم',
+    availableTip: 'الفعلي / الحد الأقصى',
     cycle: 'الدورة',
     cycleTip: 'دورة التعلم: 1=أولى، 2=ثانية، 3=ثالثة',
     stage: 'المرحلة',
@@ -91,7 +91,7 @@ const t = computed(() => {
     doneToday: 'Done Today',
     doneTodayTip: 'Total words answered today (all sessions)',
     available: 'Available',
-    availableTip: 'Words you can still practice today',
+    availableTip: 'Actual / max for today',
     cycle: 'Cycle',
     cycleTip: 'Learning cycle: 1=first pass, 2=second, 3=third',
     stage: 'Stage',

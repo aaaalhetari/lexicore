@@ -93,8 +93,7 @@ lexicore/
 
 ```javascript
 {
-  new_words_per_session: 20,
-  pool_size: 20,
+  new_words_per_session: 50,
   cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
   cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
   cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },

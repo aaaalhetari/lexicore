@@ -60,8 +60,8 @@ export function getStats() {
     const c3 = String(w.cycle_3_completed_date ?? '').slice(0, 10)
     return c1 !== todayStr && c2 !== todayStr && c3 !== todayStr
   }).length
-  const wordsPerSession = state.settings?.new_words_per_session ?? state.settings?.pool_size ?? 20
-  return { total, mastered, learning, waiting, todayAnswered, availableToday: wordsPerSession, eligibleToday }
+  const sessionLimit = state.settings?.new_words_per_session ?? 50
+  return { total, mastered, learning, waiting, todayAnswered, eligibleToday, sessionLimit }
 }
 
 export function today() {
@@ -76,8 +76,7 @@ export function isReady() {
 export async function subscribeRealtime(userId) {
   if (!hasSupabase() || !userId) {
     state.settings = {
-      new_words_per_session: 20,
-      pool_size: 20,
+      new_words_per_session: 50,
       cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
       cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -116,15 +115,13 @@ export async function subscribeRealtime(userId) {
 
   state.settings = settingsRow
     ? {
-        new_words_per_session: settingsRow.new_words_per_session ?? 20,
-        pool_size: settingsRow.pool_size ?? 20,
+        new_words_per_session: settingsRow.new_words_per_session ?? 50,
         cycle_1: settingsRow.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
         cycle_2: settingsRow.cycle_2 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
         cycle_3: settingsRow.cycle_3 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       }
     : {
-        new_words_per_session: 20,
-        pool_size: 20,
+        new_words_per_session: 50,
         cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
         cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
         cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -282,8 +279,7 @@ export async function refetchSettings(userId) {
     .maybeSingle()
   if (data) {
     state.settings = {
-      new_words_per_session: data.new_words_per_session ?? 20,
-      pool_size: data.pool_size ?? 20,
+      new_words_per_session: data.new_words_per_session ?? 50,
       cycle_1: data.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
       cycle_2: data.cycle_2 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       cycle_3: data.cycle_3 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },

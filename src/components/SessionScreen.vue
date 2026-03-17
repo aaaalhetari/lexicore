@@ -179,7 +179,8 @@ const sessionStats = computed(() => {
     cycle: (displayWord.value ?? currentWord.value)?.cycle,
     stage: (displayWord.value ?? currentWord.value)?.stage,
     todayAnswered: (stats.value?.todayAnswered ?? 0) + ans,
-    availableToday: stats.value?.availableToday ?? 0,
+    eligibleToday: stats.value?.eligibleToday ?? 0,
+    sessionLimit: stats.value?.sessionLimit ?? 50,
     onClose: () => { sessionAudio.stopAudio(); emit('end') },
   }
 })

@@ -13,7 +13,7 @@
         <h3>Session</h3>
         <div class="setting-row">
           <div><div class="setting-label">Total words for today session (learning + new)</div><div class="setting-desc">Words per session, reservoir refill, and distractors</div></div>
-          <input class="setting-input" type="number" min="1" max="50" v-model.number="local.new_words_per_session">
+          <input class="setting-input" type="number" min="1" max="50" v-model.number="local.new_words_per_session" placeholder="50">
         </div>
       </div>
       <div class="settings-section">
@@ -112,7 +112,7 @@ onMounted(async () => {
 
 // Local copy of settings for editing
 const local = reactive({
-  new_words_per_session: 20,
+  new_words_per_session: 50,
   cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
   cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
   cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -121,7 +121,7 @@ const local = reactive({
 onMounted(() => {
   snapshot.value = snapshotSettings()
   const s = getSettings()
-  local.new_words_per_session = s.new_words_per_session ?? s.pool_size ?? 20
+  local.new_words_per_session = s.new_words_per_session ?? 50
   for (let c = 1; c <= 3; c++) {
     for (let st = 1; st <= 3; st++) {
       local[`cycle_${c}`][`stage_${st}_required`] = s[`cycle_${c}`][`stage_${st}_required`]
