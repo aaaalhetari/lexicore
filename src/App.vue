@@ -1,6 +1,6 @@
 <template>
   <div class="app-loading" v-if="loading">Loading words…</div>
-  <div class="app" v-else>
+  <div class="app" :class="{ 'session-active': screen === 'session' }" v-else>
     <!-- HEADER: hide nav on session (stats in card) -->
     <div class="header">
       <div class="logo">LexiCore <span>v2.0</span></div>
@@ -68,14 +68,13 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   overflow-y: auto;
   min-height: 0;
 }
 
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: calc(var(--sp) * 1.1) 0 calc(var(--sp) * 1.6);
+  padding: calc(env(safe-area-inset-top) + var(--sp) * 1.1) calc(var(--sp) * 1.2) calc(var(--sp) * 1.6);
   flex-shrink: 0;
   position: relative;
   z-index: 10;

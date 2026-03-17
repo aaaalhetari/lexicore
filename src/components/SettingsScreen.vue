@@ -256,18 +256,9 @@ async function runAudioCleanup() {
 .sync-status { margin-bottom: 12px; }
 .auth-form { display: flex; flex-direction: column; gap: 10px; max-width: 280px; }
 .github-btn { width: 100%; }
-.auth-form .form-input {
-  background: var(--surface2); border: 1px solid var(--border);
-  color: var(--text); border-radius: var(--radius-sm); padding: 10px 14px;
-  font-size: 1rem; outline: none; font-family: 'DM Sans', sans-serif;
-}
-.auth-form .form-input:focus { border-color: var(--gold); }
-.auth-actions { display: flex; gap: 10px; }
 .auth-error { font-size: 0.9rem; color: var(--red); margin-top: 4px; }
 
-.content-gen-section,
 .audio-gen-section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
-.content-gen-section .btn,
 .audio-gen-section .btn { margin-top: 8px; }
 .audio-gen-section .migrate-btn,
 .audio-gen-section .cleanup-btn { margin-left: 8px; }

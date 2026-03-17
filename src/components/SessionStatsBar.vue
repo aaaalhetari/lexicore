@@ -106,8 +106,8 @@ const t = computed(() => {
 .session-stats-bar {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px 0;
+  gap: 8px;
+  padding: 6px 0 12px;
   font-size: 0.7rem;
   width: 100%;
 }
@@ -118,8 +118,8 @@ const t = computed(() => {
   gap: 10px 16px;
   min-height: 28px;
 }
-.stats-session { border-bottom: 1px solid var(--border); padding-bottom: 6px; }
-.stats-daily { padding-top: 2px; }
+.stats-session { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.stats-daily { padding-top: 4px; }
 .stat-item {
   display: flex;
   flex-direction: column;

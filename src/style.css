@@ -59,12 +59,18 @@ body::before {
 
 .app {
   width: 100%;
-  max-width: 100%;
+  max-width: 480px;
   min-height: 100vh;
-  padding: calc(var(--sp) * 1.2) calc(var(--sp) * 1.2) calc(var(--tap) + var(--sp) + env(safe-area-inset-bottom));
   margin: 0 auto;
+  padding: calc(var(--sp) * 1.2) calc(var(--sp) * 1.2) calc(var(--tap) + var(--sp) + env(safe-area-inset-bottom));
+  padding-left: max(calc(var(--sp) * 1.2), env(safe-area-inset-left));
+  padding-right: max(calc(var(--sp) * 1.2), env(safe-area-inset-right));
+  padding-bottom: calc(var(--tap) + var(--sp) + env(safe-area-inset-bottom));
   position: relative;
   z-index: 1;
+}
+.app.session-active {
+  max-width: 100%;
 }
 
 /* Base card surface used across stages */
@@ -83,7 +89,7 @@ body::before {
   text-transform: uppercase;
   color: var(--text3);
   font-family: 'JetBrains Mono', monospace;
-  margin-bottom: calc(var(--sp) * 0.7);
+  margin: 0 0 calc(var(--sp) * 0.7);
 }
 
 .card .definition-text {
@@ -113,14 +119,16 @@ body::before {
 .sticky-bottom {
   position: fixed;
   bottom: 0;
-  left: 0;
-  transform: none;
+  left: 50%;
+  transform: translateX(-50%);
   width: 100%;
-  max-width: 100%;
+  max-width: 480px;
   background: var(--bg);
   border-top: 1px solid var(--border);
   padding: calc(var(--sp) * 0.9) calc(var(--sp) * 1.2);
-  display: flex; gap: var(--sp);
+  padding-bottom: calc(env(safe-area-inset-bottom) + var(--sp) * 0.9);
+  display: flex;
+  gap: var(--sp);
   z-index: 100;
 }
 .sticky-bottom .btn { flex: 1; }

@@ -5,8 +5,9 @@
         <button class="toolbar-btn generate" :disabled="generating" @click="onGenerateComplete" title="Generate content">
           {{ generating ? '⏳' : '☁️' }}
         </button>
-        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
-          {{ isMuted ? '🔇' : '🔊' }}
+        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
+        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
+          {{ isMuted ? '🔇' : '🔈' }}
         </button>
         <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
       </div>
@@ -26,17 +27,18 @@
       :class="{ 'feedback-correct': feedback?.type === 'correct', 'feedback-wrong': feedback?.type === 'wrong' }"
       @click="onCardTap"
     >
+      <div v-if="sessionStats" class="card-stats">
+        <SessionStatsBar :stats="sessionStats" />
+      </div>
       <div class="card-toolbar">
         <button class="toolbar-btn generate" :disabled="generating" @click.stop="onGenerateComplete" title="Generate content">
           {{ generating ? '⏳' : '☁️' }}
         </button>
-        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
-          {{ isMuted ? '🔇' : '🔊' }}
+        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
+        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
+          {{ isMuted ? '🔇' : '🔈' }}
         </button>
         <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
-      </div>
-      <div v-if="sessionStats" class="card-stats">
-        <SessionStatsBar :stats="sessionStats" />
       </div>
       <div class="definition-label">Definition</div>
       <div class="definition-text">{{ currentDefinition }}</div>
@@ -124,14 +126,22 @@ function buildChoices() {
 }
 
 watch(() => props.word?.id, () => buildChoices(), { immediate: true })
-onMounted(() => {
+
+function playCardAudio() {
+  if (isMuted.value) return
   stopAudio()
   if (definitionAudioUrl.value) {
     playStoredAudio(definitionAudioUrl.value, 2)
   } else {
     playTextAI(currentDefinition.value, { times: 2 })
   }
-})
+}
+
+watch(() => props.sessionStats, (stats, prev) => {
+  if (stats && !prev) playCardAudio()
+  if (!stats && prev) stopAudio()
+}, { immediate: true })
+
 onUnmounted(() => stopAudio())
 
 function onCardTap() {
@@ -140,18 +150,14 @@ function onCardTap() {
   else playTextAI(currentDefinition.value, { times: 2 })
 }
 
-function onAudioClick() {
-  if (isMuted.value) {
-    toggleMute()
-    if (answered.value && props.word?.audio_word) {
-      playWord(props.word, 5)
-    } else if (definitionAudioUrl.value) {
-      playStoredAudio(definitionAudioUrl.value, 2)
-    } else {
-      playTextAI(currentDefinition.value, { times: 2 })
-    }
+function onPlayClick() {
+  if (isMuted.value) return
+  if (answered.value && props.word?.audio_word) {
+    playWord(props.word, 5)
+  } else if (definitionAudioUrl.value) {
+    playStoredAudio(definitionAudioUrl.value, 2)
   } else {
-    toggleMute()
+    playTextAI(currentDefinition.value, { times: 2 })
   }
 }
 
@@ -186,85 +192,43 @@ function answer(id) {
 </script>
 
 <style scoped>
-.definition-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.audio-btns {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.btn-gen-complete {
-  background: var(--surface2);
-  border: 1px solid var(--gold);
-  color: var(--gold);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: all 0.2s;
-}
-.btn-gen-complete:hover:not(:disabled) {
-  background: rgba(201,168,76,0.2);
-}
-.audio-btn {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 1.2rem;
-  transition: all 0.2s;
-}
-.audio-btn:hover {
-  border-color: var(--gold);
-  color: var(--gold);
-}
-.audio-btn.muted {
-  opacity: 0.6;
-}
 .unified-card {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   border: 1px solid var(--border);
   transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
-  padding-right: 120px;
 }
 .card-stats { flex-shrink: 0; width: 100%; }
 .card-toolbar {
-  position: absolute;
-  top: 10px;
-  right: 10px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  z-index: 10;
+  justify-content: flex-end;
+  gap: clamp(8px, 2.5vw, 14px);
+  flex-shrink: 0;
 }
 .toolbar-btn {
-  width: 66px;
-  height: 66px;
-  border-radius: 14px;
+  width: clamp(48px, 14vw, 64px);
+  height: clamp(48px, 14vw, 64px);
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface2);
   color: var(--text2);
-  font-size: 1.8rem;
+  font-size: clamp(1.2rem, 5vw, 1.8rem);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
   transition: all 0.2s;
   -webkit-tap-highlight-color: transparent;
 }
 .toolbar-btn:hover { border-color: var(--gold); color: var(--gold); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 .toolbar-btn:active { transform: translateY(0); }
 .toolbar-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.toolbar-btn.exit { order: 3; }
-.toolbar-btn.audio { order: 2; }
+.toolbar-btn.exit { order: 4; }
+.toolbar-btn.mute { order: 3; }
+.toolbar-btn.play { order: 2; }
 .toolbar-btn.generate { order: 1; }
 .unified-card.feedback-correct {
   background: rgba(76, 175, 130, 0.12) !important;
@@ -277,8 +241,8 @@ function answer(id) {
 .choices-inline {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 4px;
+  gap: 12px;
+  margin-top: 8px;
 }
 .choice-btn {
   background: var(--surface2);
@@ -315,7 +279,6 @@ function answer(id) {
 }
 .stage1-root .card {
   flex-shrink: 0;
-  position: relative;
   cursor: pointer;
 }
 .card.placeholder-only {
@@ -324,7 +287,6 @@ function answer(id) {
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  padding-right: 120px;
 }
 .placeholder-warn {
   display: flex;

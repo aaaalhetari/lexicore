@@ -10,11 +10,10 @@ import {
   getSettings as getRealtimeSettings,
   getStats as getRealtimeStats,
   refetchWord,
+  today,
 } from './realtime.js'
 
-export function today() {
-  return new Date().toLocaleDateString('en-CA')
-}
+export { today }
 
 export function getData() {
   return { words: getWords(), settings: getRealtimeSettings() }

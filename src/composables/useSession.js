@@ -6,27 +6,90 @@ import { ref, computed } from 'vue'
 import { getActivePool, submitAnswer, recordSession, getSettings } from '../store/data.js'
 import { getWords, getWordById, normalizeWord, updateWordOptimistic } from '../store/realtime.js'
 
+/** Shuffle array in place (Fisher-Yates) */
+function shuffleArray(arr) {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
 export function useSession() {
   const activeWords = ref([])
+  const sessionOrder = ref([]) // ordered list of word objects in display order, shuffled at start
+  const currentIndex = ref(0)
   const distractorPool = ref([])
   const totalAtStart = ref(0)
   const correct = ref(0)
   const answeredCount = ref(0)
   const lastShownId = ref(null)
   const lastS3WasCorrect = ref(undefined)
-  const currentWordId = ref(null)
   const sessionDone = ref(false)
 
   const currentWord = computed(() => {
-    const id = currentWordId.value
+    const order = sessionOrder.value
+    const idx = currentIndex.value
+    if (!order.length || idx < 0 || idx >= order.length) return null
+    const w = order[idx]
+    const id = w?.id
     if (!id) return null
     const fromStore = getWordById(id)
-    const fromPool = activeWords.value.find((w) => String(w.id) === String(id) || Number(w.id) === Number(id))
-    // Prefer pool (fresh from get_active_pool) over store (may be stale from initial load)
-    return fromPool ?? fromStore
+    const fromPool = activeWords.value.find((w2) => String(w2.id) === String(id) || Number(w2.id) === Number(id))
+    return fromPool ?? fromStore ?? w
   })
 
-  /** Sync store into activeWords. After answer: status only (avoids overwriting content with stale placeholder). After refetch: full content. */
+  const prevWord = computed(() => {
+    const idx = currentIndex.value - 1
+    const order = sessionOrder.value
+    if (idx < 0 || !order[idx]) return null
+    const w = order[idx]
+    const id = w?.id
+    if (!id) return null
+    const fromStore = getWordById(id)
+    const fromPool = activeWords.value.find((w2) => String(w2.id) === String(id) || Number(w2.id) === Number(id))
+    return fromPool ?? fromStore ?? w
+  })
+
+  const nextWord = computed(() => {
+    const nextIdx = findNextValidIndex(currentIndex.value)
+    if (nextIdx < 0) return null
+    const w = sessionOrder.value[nextIdx]
+    if (!w?.id) return null
+    const fromStore = getWordById(w.id)
+    const fromPool = activeWords.value.find((w2) => String(w2.id) === String(w.id) || Number(w2.id) === Number(w.id))
+    return fromPool ?? fromStore ?? w
+  })
+
+  /** Display order: only words still in activeWords (for Swiper slides) */
+  const displayOrder = computed(() => {
+    const activeIds = new Set(activeWords.value.map((w) => String(w.id)))
+    return sessionOrder.value.filter((w) => w && activeIds.has(String(w.id)))
+  })
+
+  /** Current index within displayOrder (for Swiper realIndex) */
+  const displayIndex = computed(() => {
+    const cur = currentWord.value
+    if (!cur?.id) return 0
+    const idx = displayOrder.value.findIndex((w) => String(w.id) === String(cur.id) || Number(w.id) === Number(cur.id))
+    return idx >= 0 ? idx : 0
+  })
+
+  /** Advance to a specific display index (used when Swiper reports slideChange) */
+  function advanceToDisplayIndex(idx) {
+    const order = displayOrder.value
+    if (idx < 0 || idx >= order.length) return false
+    const w = order[idx]
+    if (!w?.id) return false
+    const soIdx = sessionOrder.value.findIndex((s) => String(s.id) === String(w.id) || Number(s.id) === Number(w.id))
+    if (soIdx < 0) return false
+    currentIndex.value = soIdx
+    lastShownId.value = w.id
+    return true
+  }
+
+  /** Sync store into activeWords and sessionOrder. After answer: status only (avoids overwriting content with stale placeholder). After refetch: full content. */
   function syncWordFromStore(wordId, options = {}) {
     const { fullContent = false } = options
     const fromStore = getWordById(wordId)
@@ -34,8 +97,7 @@ export function useSession() {
     const idx = activeWords.value.findIndex((w) => String(w.id) === String(wordId) || Number(w.id) === Number(wordId))
     if (idx >= 0) {
       const current = activeWords.value[idx]
-      const updated = [...activeWords.value]
-      updated[idx] = fullContent
+      const updated = fullContent
         ? { ...fromStore }
         : {
             ...current,
@@ -44,34 +106,37 @@ export function useSession() {
             cycle: fromStore.cycle,
             status: fromStore.status,
           }
-      activeWords.value = updated
+      const aw = [...activeWords.value]
+      aw[idx] = updated
+      activeWords.value = aw
+    }
+    const orderIdx = sessionOrder.value.findIndex((w) => String(w.id) === String(wordId) || Number(w.id) === Number(wordId))
+    if (orderIdx >= 0) {
+      const current = sessionOrder.value[orderIdx]
+      const updatedOrder = fullContent
+        ? { ...fromStore }
+        : {
+            ...current,
+            consecutive_correct: fromStore.consecutive_correct,
+            stage: fromStore.stage,
+            cycle: fromStore.cycle,
+            status: fromStore.status,
+          }
+      const so = [...sessionOrder.value]
+      so[orderIdx] = updatedOrder
+      sessionOrder.value = so
     }
   }
 
-  function pickNextWord() {
-    const pool = activeWords.value
-    if (pool.length === 1) return pool[0]
-    const lastId = lastShownId.value
-    const candidates = pool.filter((w) => String(w.id) !== String(lastId) && Number(w.id) !== Number(lastId))
-    const pickPool = candidates.length > 0 ? candidates : pool
-    const settings = getSettings()
-
-    const weights = pickPool.map((w) => {
-      const req = settings[`cycle_${w.cycle || 1}`]?.[`stage_${w.stage}_required`] || 4
-      const progress = w.consecutive_correct / req
-      return 1 + (1 - progress) * 3
-    })
-    const total = weights.reduce((a, b) => a + b, 0)
-    let r = Math.random() * total
-    for (let i = 0; i < pickPool.length; i++) {
-      r -= weights[i]
-      if (r <= 0) {
-        lastShownId.value = pickPool[i].id
-        return pickPool[i]
-      }
+  /** Find next valid index in sessionOrder (skip words no longer in activeWords) */
+  function findNextValidIndex(fromIndex) {
+    const order = sessionOrder.value
+    const activeIds = new Set(activeWords.value.map((w) => String(w.id)))
+    for (let i = fromIndex + 1; i < order.length; i++) {
+      const w = order[i]
+      if (w && activeIds.has(String(w.id))) return i
     }
-    lastShownId.value = pickPool[0].id
-    return pickPool[0]
+    return -1
   }
 
   async function startSession() {
@@ -97,6 +162,8 @@ export function useSession() {
     }
 
     activeWords.value = dedupedPool
+    sessionOrder.value = shuffleArray(dedupedPool)
+    currentIndex.value = 0
     distractorPool.value = distractors
     totalAtStart.value = dedupedPool.length
     correct.value = 0
@@ -105,8 +172,6 @@ export function useSession() {
     lastS3WasCorrect.value = undefined
     sessionDone.value = false
 
-    const next = pickNextWord()
-    currentWordId.value = next?.id ?? null
     return 'started'
   }
 
@@ -155,8 +220,15 @@ export function useSession() {
       recordSession(answeredCount.value, correct.value)
       return false
     }
-    const next = pickNextWord()
-    currentWordId.value = next?.id ?? null
+    const nextIdx = findNextValidIndex(currentIndex.value)
+    if (nextIdx < 0) {
+      sessionDone.value = true
+      recordSession(answeredCount.value, correct.value)
+      return false
+    }
+    currentIndex.value = nextIdx
+    const nextWord = sessionOrder.value[nextIdx]
+    if (nextWord) lastShownId.value = nextWord.id
     return true
   }
 
@@ -171,6 +243,13 @@ export function useSession() {
 
   return {
     activeWords,
+    sessionOrder,
+    currentIndex,
+    displayOrder,
+    displayIndex,
+    prevWord,
+    nextWord,
+    advanceToDisplayIndex,
     distractorPool,
     totalAtStart,
     correct,

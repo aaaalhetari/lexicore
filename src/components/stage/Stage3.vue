@@ -5,8 +5,9 @@
         <button class="toolbar-btn generate" :disabled="generating" @click="onGenerateComplete" title="Generate content">
           {{ generating ? '⏳' : '☁️' }}
         </button>
-        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
-          {{ isMuted ? '🔇' : '🔊' }}
+        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
+        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
+          {{ isMuted ? '🔇' : '🔈' }}
         </button>
         <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
       </div>
@@ -33,8 +34,9 @@
         <button class="toolbar-btn generate" :disabled="generating" @click.stop="onGenerateComplete" title="Generate content">
           {{ generating ? '⏳' : '☁️' }}
         </button>
-        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
-          {{ isMuted ? '🔇' : '🔊' }}
+        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
+        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
+          {{ isMuted ? '🔇' : '🔈' }}
         </button>
         <button class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
       </div>
@@ -45,6 +47,18 @@
         <div class="tap-zone tap-correct" @click.stop="answer(true)">✓</div>
       </div>
       <div class="swipe-hint">← tap ✗ &nbsp;|&nbsp; tap ✓ →</div>
+      <div v-if="feedback" class="stage3-explanation-block">
+        <div v-if="stage3Explanation" class="explanation-text">{{ stage3Explanation }}</div>
+        <button
+          v-if="!stage3ExplanationLoading"
+          class="btn-ai-explain"
+          @click.stop="emit('retry-explanation')"
+          title="Get AI explanation"
+        >
+          ☁️ AI explain
+        </button>
+        <span v-else class="explanation-loading">⏳ AI explaining…</span>
+      </div>
     </div>
   </div>
 </template>
@@ -58,8 +72,15 @@ import { generateWordComplete } from '../../store/data.js'
 import { refetchWord } from '../../store/realtime.js'
 import { getCurrentUser } from '../../store/sync.js'
 
-const props = defineProps({ word: Object, useCorrect: Boolean, feedback: Object, sessionStats: Object })
-const emit = defineEmits(['answered', 'skip', 'content-generated'])
+const props = defineProps({
+  word: Object,
+  useCorrect: Boolean,
+  feedback: Object,
+  sessionStats: Object,
+  stage3Explanation: { type: String, default: '' },
+  stage3ExplanationLoading: { type: Boolean, default: false },
+})
+const emit = defineEmits(['answered', 'skip', 'content-generated', 'retry-explanation'])
 
 const { playWord, playTextAI, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
 const answered = ref(false)
@@ -121,37 +142,38 @@ watch(cardEl, (el, prev) => {
   if (el) swipe.bind(el)
 }, { immediate: true })
 
-onMounted(() => {
-  try {
-    stopAudio()
-    if (sentenceAudioUrl.value) {
-      playStoredAudio(sentenceAudioUrl.value, 2)
-    } else {
-      playTextAI(sentence.value, { times: 2 })
-    }
-  } catch {
-    // ignore audio errors
+function playCardAudio() {
+  if (isMuted.value) return
+  stopAudio()
+  if (sentenceAudioUrl.value) {
+    playStoredAudio(sentenceAudioUrl.value, 2)
+  } else {
+    playTextAI(sentence.value, { times: 2 })
   }
-})
+}
+
+watch(() => props.sessionStats, (stats, prev) => {
+  if (stats && !prev) playCardAudio()
+  if (!stats && prev) stopAudio()
+}, { immediate: true })
+
 onUnmounted(() => {
   try {
     stopAudio?.()
     swipe.unbind(cardEl.value)
-  } catch { /* ignore */ }
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn('Stage3 unmount:', e)
+  }
 })
 
-function onAudioClick() {
-  if (isMuted.value) {
-    toggleMute()
-    if (answered.value && props.word?.audio_word) {
-      playWord(props.word, 5)
-    } else if (sentenceAudioUrl.value) {
-      playStoredAudio(sentenceAudioUrl.value, 2)
-    } else {
-      playTextAI(sentence.value, { times: 2 })
-    }
+function onPlayClick() {
+  if (isMuted.value) return
+  if (answered.value && props.word?.audio_word) {
+    playWord(props.word, 5)
+  } else if (sentenceAudioUrl.value) {
+    playStoredAudio(sentenceAudioUrl.value, 2)
   } else {
-    toggleMute()
+    playTextAI(sentence.value, { times: 2 })
   }
 }
 
@@ -185,52 +207,12 @@ function answer(chosen) {
 </script>
 
 <style scoped>
-.definition-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.audio-btns {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.btn-gen-complete {
-  background: var(--surface2);
-  border: 1px solid var(--gold);
-  color: var(--gold);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: all 0.2s;
-}
-.btn-gen-complete:hover:not(:disabled) {
-  background: rgba(201,168,76,0.2);
-}
-.audio-btn {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 1.2rem;
-  transition: all 0.2s;
-}
-.audio-btn:hover {
-  border-color: var(--gold);
-  color: var(--gold);
-}
-.audio-btn.muted {
-  opacity: 0.6;
-}
 .stage3-sentence {
   font-family: 'DM Sans', sans-serif;
   font-size: clamp(1.4rem, 1.2vw + 1rem, 2.3rem);
   line-height: 1.7;
   color: var(--text);
-  margin-bottom: 24px;
+  margin: 0 0 8px;
   font-weight: 400;
 }
 .stage3-root .card { position: relative; }
@@ -254,7 +236,7 @@ function answer(chosen) {
 .tap-zones {
   display: flex;
   gap: 0;
-  margin-top: 16px;
+  margin-top: 4px;
   min-height: 56px;
 }
 .tap-zone {
@@ -285,38 +267,71 @@ function answer(chosen) {
 .swipe-hint {
   font-size: 0.8rem;
   color: var(--text3);
-  margin-top: 12px;
+  margin-top: 4px;
   text-align: center;
 }
+.stage3-explanation-block {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-sm);
+}
+.explanation-text {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: var(--text);
+  margin-bottom: 12px;
+  font-weight: 450;
+}
+.btn-ai-explain {
+  background: var(--surface2);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+}
+.btn-ai-explain:hover {
+  background: rgba(201, 168, 76, 0.2);
+  border-color: var(--gold2);
+  color: var(--gold2);
+}
+.explanation-loading {
+  font-size: 0.9rem;
+  color: var(--text3);
+}
 .swipe-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   touch-action: pan-y;
   border: 1px solid var(--border);
   transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
-  padding-right: 120px;
 }
 .card-stats { flex-shrink: 0; width: 100%; }
 .card-toolbar {
-  position: absolute;
-  top: 10px;
-  right: 10px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  z-index: 10;
+  justify-content: flex-end;
+  gap: clamp(8px, 2.5vw, 14px);
+  flex-shrink: 0;
 }
 .toolbar-btn {
-  width: 66px;
-  height: 66px;
-  border-radius: 14px;
+  width: clamp(48px, 14vw, 64px);
+  height: clamp(48px, 14vw, 64px);
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface2);
   color: var(--text2);
-  font-size: 1.8rem;
+  font-size: clamp(1.2rem, 5vw, 1.8rem);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
   transition: all 0.2s;
   -webkit-tap-highlight-color: transparent;
 }
@@ -341,7 +356,6 @@ function answer(chosen) {
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  padding-right: 120px;
 }
 .placeholder-warn {
   display: flex;

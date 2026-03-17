@@ -5,8 +5,9 @@
         <button class="toolbar-btn generate" :disabled="generating" @click="onGenerateComplete" title="Generate content">
           {{ generating ? '⏳' : '☁️' }}
         </button>
-        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
-          {{ isMuted ? '🔇' : '🔊' }}
+        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
+        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
+          {{ isMuted ? '🔇' : '🔈' }}
         </button>
         <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
       </div>
@@ -33,8 +34,9 @@
         <button class="toolbar-btn generate" :disabled="generating" @click.stop="onGenerateComplete" title="Generate content">
           {{ generating ? '⏳' : '☁️' }}
         </button>
-        <button class="toolbar-btn audio" @click.stop="onAudioClick" :title="isMuted ? 'Unmute' : 'Play'">
-          {{ isMuted ? '🔇' : '🔊' }}
+        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
+        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
+          {{ isMuted ? '🔇' : '🔈' }}
         </button>
         <button class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
       </div>
@@ -45,10 +47,7 @@
         @click="onSentenceClick"
       >
         <span class="sentence-part">{{ part1 }}</span>
-        <span class="blank-wrap">
-          <span class="meaning-inline">{{ currentMeaning }}</span>
-          <span class="blank" :class="{ filled: revealed }">{{ revealed ? word.word : '…' }}</span>
-        </span>
+        <span class="blank" :class="{ filled: revealed }">{{ revealed ? word.word : currentMeaning }}</span>
         <span class="sentence-part">{{ part2 }}</span>
       </div>
       <div v-if="revealed && !answered" class="tap-zones">
@@ -129,31 +128,34 @@ watch(cardEl, (el, prev) => {
   if (el) swipe.bind(el)
 }, { immediate: true })
 
-onMounted(() => {
+function playCardAudio() {
+  if (isMuted.value) return
   stopAudio()
   if (sentenceAudioUrl.value) {
     playStoredAudio(sentenceAudioUrl.value, 2)
   } else {
     playTextAI(currentSentence.value, { times: 2, pauseAtBlank: true })
   }
-})
+}
+
+watch(() => props.sessionStats, (stats, prev) => {
+  if (stats && !prev) playCardAudio()
+  if (!stats && prev) stopAudio()
+}, { immediate: true })
+
 onUnmounted(() => {
   stopAudio()
   swipe.unbind(cardEl.value)
 })
 
-function onAudioClick() {
-  if (isMuted.value) {
-    toggleMute()
-    if (revealed.value && props.word?.audio_word) {
-      playWord(props.word, 5)
-    } else if (sentenceAudioUrl.value) {
-      playStoredAudio(sentenceAudioUrl.value, 2)
-    } else {
-      playTextAI(currentSentence.value, { times: 2, pauseAtBlank: true })
-    }
+function onPlayClick() {
+  if (isMuted.value) return
+  if (revealed.value && props.word?.audio_word) {
+    playWord(props.word, 5)
+  } else if (sentenceAudioUrl.value) {
+    playStoredAudio(sentenceAudioUrl.value, 2)
   } else {
-    toggleMute()
+    playTextAI(currentSentence.value, { times: 2, pauseAtBlank: true })
   }
 }
 
@@ -194,79 +196,33 @@ function answer(val) {
 </script>
 
 <style scoped>
-.definition-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.audio-btns {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.btn-gen-complete {
-  background: var(--surface2);
-  border: 1px solid var(--gold);
-  color: var(--gold);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: all 0.2s;
-}
-.btn-gen-complete:hover:not(:disabled) {
-  background: rgba(201,168,76,0.2);
-}
-.audio-btn {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  cursor: pointer;
-  font-size: 1.2rem;
-  transition: all 0.2s;
-}
-.audio-btn:hover {
-  border-color: var(--gold);
-  color: var(--gold);
-}
-.audio-btn.muted {
-  opacity: 0.6;
-}
 .sentence-text {
   font-family: 'DM Sans', sans-serif;
   font-size: clamp(1.35rem, 1.2vw + 1rem, 2.2rem);
   line-height: 1.7;
   color: var(--text);
-  margin-bottom: 16px;
+  margin: 0 0 8px;
   font-weight: 400;
-}
-.blank-wrap {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  vertical-align: middle;
-  margin: 0 4px;
-}
-.meaning-inline {
-  font-size: 0.5em;
-  line-height: 1.3;
-  color: var(--text2);
-  font-family: inherit;
-  text-align: center;
-  max-width: 280px;
-  margin-bottom: 2px;
 }
 .blank {
   display: inline-block;
   min-width: 60px;
+  margin: 0 4px;
   border-bottom: 2px solid var(--gold);
   padding: 0 4px 2px;
   vertical-align: baseline;
+  color: var(--gold);
+  font-size: 0.5em;
+  line-height: 1.4;
+  max-width: 320px;
 }
 .blank:not(.filled) { min-height: 1em; }
-.blank.filled { border-color: var(--gold2); }
+.blank.filled {
+  border-color: var(--gold2);
+  color: var(--gold2);
+  font-size: 1em;
+  font-weight: 600;
+}
 .sentence-part {
   vertical-align: middle;
 }
@@ -275,11 +231,10 @@ function answer(val) {
   content: 'Tap to reveal'; font-size: 0.75rem; color: var(--text3);
   display: block; margin-top: 8px;
 }
-.blank.filled { color: var(--gold2); font-weight: 600; }
 .tap-zones {
   display: flex;
   gap: 0;
-  margin-top: 16px;
+  margin-top: 4px;
   min-height: 56px;
 }
 .tap-zone {
@@ -310,13 +265,15 @@ function answer(val) {
 .swipe-hint {
   font-size: 0.8rem;
   color: var(--text3);
-  margin-top: 12px;
+  margin-top: 4px;
   text-align: center;
 }
 .swipe-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   border: 1px solid var(--border);
   transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
-  padding-right: 120px;
 }
 .swipe-card.feedback-correct {
   background: rgba(76, 175, 130, 0.12) !important;
@@ -329,27 +286,25 @@ function answer(val) {
 .swipe-card { touch-action: pan-y; }
 .card-stats { flex-shrink: 0; width: 100%; }
 .card-toolbar {
-  position: absolute;
-  top: 10px;
-  right: 10px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  z-index: 10;
+  justify-content: flex-end;
+  gap: clamp(8px, 2.5vw, 14px);
+  flex-shrink: 0;
 }
 .toolbar-btn {
-  width: 66px;
-  height: 66px;
-  border-radius: 14px;
+  width: clamp(48px, 14vw, 64px);
+  height: clamp(48px, 14vw, 64px);
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface2);
   color: var(--text2);
-  font-size: 1.8rem;
+  font-size: clamp(1.2rem, 5vw, 1.8rem);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
   transition: all 0.2s;
   -webkit-tap-highlight-color: transparent;
 }
@@ -366,7 +321,6 @@ function answer(val) {
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  padding-right: 120px;
 }
 .placeholder-warn {
   display: flex;

@@ -47,40 +47,78 @@
       </div>
     </div>
 
-    <!-- ACTIVE QUESTION -->
+    <!-- ACTIVE QUESTION - Swiper owns the full carousel -->
     <div v-else-if="phase === 'question' && currentWord" class="session-question-wrap">
       <div class="session-content">
-      <div
-        ref="swipeNextEl"
-        class="stage-transition-wrap swipe-next-wrap"
-        :class="{ 'can-swipe': !!feedback }"
-      >
-      <Transition name="slide-card" mode="out-in">
-        <Stage1 v-if="(displayWord ?? currentWord)?.stage === 1" :key="(displayWord ?? currentWord)?.id + '-s1-' + questionKey + '-' + contentRefreshKey"
-          :word="displayWord ?? currentWord" :distractorPool="distractorPool" :feedback="feedback"
-          :sessionStats="sessionStats"
-          @answered="onAnswered" @skip="onSkip" @content-generated="onContentGenerated" />
-        <Stage2 v-else-if="(displayWord ?? currentWord)?.stage === 2" :key="(displayWord ?? currentWord)?.id + '-s2-' + questionKey + '-' + contentRefreshKey"
-          :word="displayWord ?? currentWord" :feedback="feedback"
-          :sessionStats="sessionStats"
-          @answered="onAnswered" @skip="onSkip" @content-generated="onContentGenerated" />
-        <Stage3 v-else-if="(displayWord ?? currentWord)?.stage === 3" :key="(displayWord ?? currentWord)?.id + '-s3-' + questionKey + '-' + contentRefreshKey"
-          :word="displayWord ?? currentWord" :useCorrect="s3UseCorrect" :feedback="feedback"
-          :sessionStats="sessionStats"
-          @answered="onAnswered" @skip="onSkip" @content-generated="onContentGenerated" />
-      </Transition>
-      </div>
-      <div v-if="feedback" class="swipe-next-hint">← swipe to next →</div>
+        <Swiper
+          :key="'swiper-' + displayOrder.length"
+          class="session-swiper"
+          :slides-per-view="1.25"
+          :centered-slides="true"
+          :space-between="20"
+          :initial-slide="displayIndex"
+          :allow-slide-prev="false"
+          :allow-slide-next="!!feedback && displayIndex < displayOrder.length - 1"
+          @swiper="onSwiper"
+          @touch-start="onSwiperTouchStart"
+          @slide-change="onSlideChange"
+        >
+          <SwiperSlide
+            v-for="(word, idx) in displayOrder"
+            :key="'slide-' + (word?.id ?? idx)"
+            class="session-slide"
+          >
+            <div class="slide-inner">
+              <Stage1
+                v-if="((idx === displayIndex ? (displayWord ?? currentWord) : word)?.stage ?? 1) === 1"
+                :key="(word?.id ?? '') + '-s1-' + questionKey + '-' + contentRefreshKey + '-' + (idx === displayIndex ? 'active' : '')"
+                :word="idx === displayIndex ? (displayWord ?? currentWord) : word"
+                :distractorPool="distractorPool"
+                :feedback="idx === displayIndex ? feedback : null"
+                :sessionStats="idx === displayIndex ? sessionStats : null"
+                @answered="onAnswered"
+                @skip="onSkip"
+                @content-generated="onContentGenerated"
+              />
+              <Stage2
+                v-else-if="(idx === displayIndex ? (displayWord ?? currentWord) : word)?.stage === 2"
+                :key="(word?.id ?? '') + '-s2-' + questionKey + '-' + contentRefreshKey + '-' + (idx === displayIndex ? 'active' : '')"
+                :word="idx === displayIndex ? (displayWord ?? currentWord) : word"
+                :feedback="idx === displayIndex ? feedback : null"
+                :sessionStats="idx === displayIndex ? sessionStats : null"
+                @answered="onAnswered"
+                @skip="onSkip"
+                @content-generated="onContentGenerated"
+              />
+              <Stage3
+                v-else-if="(idx === displayIndex ? (displayWord ?? currentWord) : word)?.stage === 3"
+                :key="(word?.id ?? '') + '-s3-' + questionKey + '-' + contentRefreshKey + '-' + (idx === displayIndex ? 'active' : '')"
+                :word="idx === displayIndex ? (displayWord ?? currentWord) : word"
+                :useCorrect="s3UseCorrect"
+                :feedback="idx === displayIndex ? feedback : null"
+                :sessionStats="idx === displayIndex ? sessionStats : null"
+                :stage3Explanation="idx === displayIndex ? stage3Explanation : ''"
+                :stage3ExplanationLoading="idx === displayIndex ? stage3ExplanationLoading : false"
+                @answered="onAnswered"
+                @skip="onSkip"
+                @content-generated="onContentGenerated"
+                @retry-explanation="retryExplanation"
+              />
+            </div>
+          </SwiperSlide>
+        </Swiper>
+        <div v-if="feedback" class="swipe-next-hint">← swipe to next →</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, provide, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide, nextTick } from 'vue'
+import { Swiper, SwiperSlide } from 'swiper/vue'
+import 'swiper/css'
 import { useSession } from '../composables/useSession.js'
 import { useAudio } from '../composables/useAudio.js'
-import { useSwipe } from '../composables/useSwipe.js'
 import { getData, getStats, downloadJSON, checkRefillNeeded, processRefillJobs, preloadTTS, explainSentence } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser } from '../store/sync.js'
@@ -94,9 +132,10 @@ const sessionAudio = useAudio()
 provide('sessionAudio', sessionAudio)
 
 const {
-  activeWords, distractorPool, progressPct, remaining, totalAtStart,
+  activeWords, sessionOrder, currentIndex, displayOrder, displayIndex, prevWord, nextWord,
+  distractorPool, progressPct, remaining, totalAtStart,
   correct, answeredCount, currentWord, sessionDone,
-  startSession, handleAnswer, advance, getS3Type, syncWordFromStore,
+  startSession, handleAnswer, advance, advanceToDisplayIndex, getS3Type, syncWordFromStore,
 } = useSession()
 
 const completedCount = computed(() => Math.max(0, (totalAtStart?.value ?? 0) - (remaining?.value ?? 0)))
@@ -116,14 +155,7 @@ const stage3Explanation = ref('')
 const stage3ExplanationLoading = ref(false)
 const questionKey  = ref(0)
 const contentRefreshKey = ref(0)
-const swipeNextEl = ref(null)
-
-const swipeNext = useSwipe({
-  threshold: 50,
-  onSwipeLeft: () => feedback.value && next(),
-  onSwipeRight: () => feedback.value && next(),
-  enabled: () => !!feedback.value && !nextLock.value,
-})
+const swiperRef = ref(null)
 const s3UseCorrect = ref(true)
 const errorMessage = ref('')
 const generating = ref(false)
@@ -160,28 +192,45 @@ const required = computed(() => {
   return getData().settings[`cycle_${c}`]?.[`stage_${s}_required`] || 4
 })
 
-const dotsCount = computed(() => Math.min(required.value, 8))
-
 // Use progressDisplay during feedback; else use displayWord/currentWord — keep display stable
 const displayCount = computed(() =>
   feedback.value && progressDisplay.value ? progressDisplay.value.count : ((displayWord.value ?? currentWord.value)?.consecutive_correct ?? 0))
 const displayRequired = computed(() =>
   feedback.value && progressDisplay.value ? progressDisplay.value.required : required.value)
-const progressSegCount = computed(() => Math.min(displayRequired.value, 8))
-const filledSegCount = computed(() => {
-  const req = displayRequired.value
-  const cnt = displayCount.value
-  if (!req) return 0
-  return Math.round((cnt / req) * progressSegCount.value)
-})
-watch(swipeNextEl, (el, prev) => {
-  if (prev) swipeNext.unbind(prev)
-  if (el) swipeNext.bind(el)
-}, { immediate: true })
+
+function onSwiper(swiper) {
+  swiperRef.value = swiper
+}
+
+function onSwiperTouchStart() {
+  if (feedback.value) sessionAudio.stopAudio()
+}
+
+function doNextCleanup() {
+  sessionAudio.stopAudio()
+  feedback.value = null
+  displayWord.value = null
+  progressDisplay.value = null
+  stage3Explanation.value = ''
+  stage3ExplanationLoading.value = false
+}
+
+function onSlideChange(swiper) {
+  const realIndex = swiper.realIndex
+  if (!feedback.value || nextLock.value) return
+  // Only react when user swiped forward (Swiper already moved - we just sync state)
+  if (realIndex <= displayIndex.value) return
+  nextLock.value = true
+  doNextCleanup()
+  advanceToDisplayIndex(realIndex)
+  preloadTTS(currentWord.value)
+  questionKey.value++
+  if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
+  nextTick(() => { nextLock.value = false })
+}
 
 onUnmounted(() => {
   sessionAudio.stopAudio()
-  swipeNext.unbind(swipeNextEl.value)
 })
 
 onMounted(async () => {
@@ -334,14 +383,12 @@ function onContentGenerated(wordId) {
 function next() {
   if (nextLock.value) return
   nextLock.value = true
-  sessionAudio.stopAudio()
-  feedback.value = null
-  displayWord.value = null
-  progressDisplay.value = null
-  stage3Explanation.value = ''
-  stage3ExplanationLoading.value = false
+  doNextCleanup()
   const hasMore = advance()
   if (!hasMore) { phase.value = 'end'; nextLock.value = false; return }
+  if (swiperRef.value && !swiperRef.value.destroyed) {
+    swiperRef.value.slideTo(displayIndex.value)
+  }
   preloadTTS(currentWord.value)
   questionKey.value++
   if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
@@ -352,11 +399,12 @@ function next() {
 function onSkip() {
   if (nextLock.value) return
   nextLock.value = true
-  sessionAudio.stopAudio()
-  feedback.value = null
-  displayWord.value = null
+  doNextCleanup()
   const hasMore = advance()
   if (!hasMore) { phase.value = 'end'; nextLock.value = false; return }
+  if (swiperRef.value && !swiperRef.value.destroyed) {
+    swiperRef.value.slideTo(displayIndex.value)
+  }
   preloadTTS(currentWord.value)
   questionKey.value++
   if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
@@ -378,10 +426,16 @@ function onSkip() {
   display: flex; flex-direction: column;
 }
 .stage-transition-wrap {
-  flex: 1; min-height: 0; overflow: hidden;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
+  flex: 1;
+  min-height: min(560px, 80vh);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: var(--sp);
+  width: 100%;
+  position: relative;
 }
 .stage-transition-wrap > * {
   flex: 1; min-height: 0;
@@ -391,9 +445,11 @@ function onSkip() {
 }
 .session-content :deep(.card) {
   width: 100%;
-  min-height: 320px;
+  max-width: 100%;
+  min-height: min(560px, 80vh);
   padding: calc(var(--sp) * 1.1);
   margin: 0 auto;
+  box-sizing: border-box;
 }
 .session-content :deep(.definition-text) {
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
@@ -409,9 +465,40 @@ function onSkip() {
   width: 100%;
   margin: 0 auto;
 }
-.swipe-next-wrap {
-  touch-action: pan-y;
+
+/* Swiper: fixed height prevents jump when switching between tall/short cards */
+.session-swiper {
+  flex: 1;
+  height: min(640px, 88vh);
+  min-height: min(560px, 80vh);
+  width: 100%;
+  overflow: hidden;
 }
+.session-swiper :deep(.swiper-wrapper) {
+  align-items: stretch;
+}
+.session-swiper :deep(.swiper-slide) {
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.slide-inner {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.session-swiper :deep(.slide-inner .card) {
+  width: 100%;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
 .swipe-next-hint {
   flex-shrink: 0;
   padding: 8px var(--sp);
@@ -455,20 +542,4 @@ function onSkip() {
 .end-stat .num { font-family: 'JetBrains Mono', monospace; font-size: 1.9rem; color: var(--gold); }
 .end-stat .lbl { font-size: 0.85rem; color: var(--text3); margin-top: 4px; }
 
-.icon-btn {
-  background: var(--surface2); border: 1px solid var(--border);
-  color: var(--text2);
-  width: var(--tap);
-  height: var(--tap);
-  border-radius: var(--radius-sm);
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  font-size: var(--icon);
-  transition: all 0.2s;
-}
-.icon-btn:hover { border-color: var(--red); color: var(--red); }
-
-.stage-transition-wrap {
-  min-height: 320px;
-  position: relative;
-}
 </style>
