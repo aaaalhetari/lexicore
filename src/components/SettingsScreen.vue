@@ -12,8 +12,31 @@
       <div class="settings-section">
         <h3>Session</h3>
         <div class="setting-row">
-          <div><div class="setting-label">Total words for today session (learning + new)</div><div class="setting-desc">Words per session, reservoir refill, and distractors</div></div>
+          <div>
+            <div class="setting-label">Total words for today session (learning + new)</div>
+            <div class="setting-desc">Max words per session. Shown as "Available Today X of Y/session" on home.</div>
+            <div class="setting-counter">Home shows: <strong>Available Today {{ stats.eligibleToday ?? 0 }}</strong> of <strong>{{ local.new_words_per_session ?? 50 }}</strong>/session</div>
+          </div>
           <input class="setting-input" type="number" min="1" max="50" v-model.number="local.new_words_per_session" placeholder="50">
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>Reservoir</h3>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">New words per day</div>
+            <div class="setting-desc">Words to study today. Bounded by [learning today, reservoir]. Reducing moves excess new_word → waiting.</div>
+            <div class="setting-counter">Home shows: <strong>New words {{ stats.newWord ?? 0 }}</strong> of <strong>{{ local.new_words_per_day ?? 25 }}</strong>/day · Learning today: {{ stats.newWordsInLearningToday ?? 0 }} (min)</div>
+          </div>
+          <input class="setting-input" type="number" :min="minNewWordsPerDay" :max="maxNewWordsPerDay" v-model.number="local.new_words_per_day" placeholder="25">
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Reservoir (Waiting buffer)</div>
+            <div class="setting-desc">Pre-generated words ready for study. Target shown as "X of Y target" on home. When waiting &lt; reservoir, refill adds new words.</div>
+            <div class="setting-counter">Home shows: <strong>Waiting {{ stats.waiting ?? 0 }}</strong> of <strong>{{ local.reservoir ?? 50 }}</strong> target</div>
+          </div>
+          <input class="setting-input" type="number" min="10" max="100" v-model.number="local.reservoir" placeholder="50">
         </div>
       </div>
       <div class="settings-section">
@@ -85,26 +108,30 @@
 
     <!-- Sticky Buttons -->
     <div class="sticky-bottom">
-      <button class="btn btn-primary" @click="save">Save & Back</button>
-      <button class="btn btn-secondary" @click="cancel">Back without Saving</button>
+      <button class="btn btn-primary" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save & Back' }}</button>
+      <button class="btn btn-secondary" :disabled="saving" @click="cancel">Back without Saving</button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { getSettings, updateSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON, migrateAudioStructure, cleanupOldAudio } from '../store/data.js'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { getSettings, getStats, updateSettings, refreshSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON, migrateAudioStructure, cleanupOldAudio } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser, signInWithGitHub, signOut } from '../store/sync.js'
 
 const emit = defineEmits(['back'])
 const tab = ref('general')
+const stats = computed(() => getStats())
+const minNewWordsPerDay = computed(() => Math.max(1, stats.value?.newWordsInLearningToday ?? 0))
+const maxNewWordsPerDay = computed(() => Math.max(minNewWordsPerDay.value, local.reservoir ?? stats.value?.reservoir ?? 50))
 const snapshot = ref(null)
 const hasSync = hasSupabase()
 const user = ref(null)
 const authError = ref('')
 const migratingAudio = ref(false)
 const cleaningAudio = ref(false)
+const saving = ref(false)
 
 onMounted(async () => {
   if (hasSync) user.value = await getCurrentUser()
@@ -113,15 +140,20 @@ onMounted(async () => {
 // Local copy of settings for editing
 const local = reactive({
   new_words_per_session: 50,
+  new_words_per_day: 25,
+  reservoir: 50,
   cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
   cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
   cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
 })
 
-onMounted(() => {
+onMounted(async () => {
+  await refreshSettings()
   snapshot.value = snapshotSettings()
   const s = getSettings()
   local.new_words_per_session = s.new_words_per_session ?? 50
+  local.new_words_per_day = s.new_words_per_day ?? 25
+  local.reservoir = s.reservoir ?? 10
   for (let c = 1; c <= 3; c++) {
     for (let st = 1; st <= 3; st++) {
       local[`cycle_${c}`][`stage_${st}_required`] = s[`cycle_${c}`][`stage_${st}_required`]
@@ -130,14 +162,23 @@ onMounted(() => {
 })
 
 async function save() {
-  await updateSettings(local)
-  emit('back')
+  saving.value = true
+  try {
+    await updateSettings(local)
+    emit('back')
+  } catch (e) {
+    alert('Save failed: ' + (e?.message ?? e))
+  } finally {
+    saving.value = false
+  }
 }
 
 function cancel() {
   const restored = restoreSettings(snapshot.value)
   if (restored) {
     local.new_words_per_session = restored.new_words_per_session ?? restored.pool_size ?? 20
+    local.new_words_per_day = restored.new_words_per_day ?? 25
+    local.reservoir = restored.reservoir ?? 10
     for (let c = 1; c <= 3; c++) {
       for (let st = 1; st <= 3; st++) {
         local[`cycle_${c}`][`stage_${st}_required`] = restored[`cycle_${c}`]?.[`stage_${st}_required`]
@@ -231,6 +272,7 @@ async function runAudioCleanup() {
 .setting-row:last-child { border-bottom: none; }
 .setting-label { font-size: 1rem; }
 .setting-desc { font-size: 0.9rem; color: var(--text3); margin-top: 2px; }
+.setting-counter { font-size: 0.85rem; color: var(--gold); margin-top: 6px; }
 .setting-input {
   background: var(--surface2); border: 1px solid var(--border);
   color: var(--text); border-radius: var(--radius-sm); padding: 8px 12px;

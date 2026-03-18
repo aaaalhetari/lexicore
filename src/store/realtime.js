@@ -47,21 +47,27 @@ export function getStats() {
   const words = state.words
   const total = words.length
   const mastered = words.filter((w) => w.status === 'mastered').length
-  const learning = words.filter((w) => w.status === 'learning').length
+  const learningToday = words.filter((w) => w.status === 'learning_today').length
+  const learningBeforeToday = words.filter((w) => w.status === 'learning_before_today').length
+  const learning = learningToday + learningBeforeToday
+  const newWord = words.filter((w) => w.status === 'new_word').length
   const waiting = words.filter((w) => w.status === 'waiting').length
   const todayStr = today()
   const todayAnswered = state.sessions
     .filter((s) => s.date === todayStr)
     .reduce((sum, s) => sum + (s.answered || 0), 0)
   const eligibleToday = words.filter((w) => {
-    if (w.status !== 'learning') return false
+    if (w.status !== 'learning_today' && w.status !== 'learning_before_today') return false
     const c1 = String(w.cycle_1_completed_date ?? '').slice(0, 10)
     const c2 = String(w.cycle_2_completed_date ?? '').slice(0, 10)
     const c3 = String(w.cycle_3_completed_date ?? '').slice(0, 10)
     return c1 !== todayStr && c2 !== todayStr && c3 !== todayStr
   }).length
   const sessionLimit = state.settings?.new_words_per_session ?? 50
-  return { total, mastered, learning, waiting, todayAnswered, eligibleToday, sessionLimit }
+  const reservoir = state.settings?.reservoir ?? 50
+  const newWordsPerDay = state.settings?.new_words_per_day ?? 25
+  const newWordsInLearningToday = learningToday
+  return { total, mastered, learning, learningToday, learningBeforeToday, newWord, waiting, todayAnswered, eligibleToday, sessionLimit, reservoir, newWordsPerDay, newWordsInLearningToday }
 }
 
 export function today() {
@@ -77,6 +83,8 @@ export async function subscribeRealtime(userId) {
   if (!hasSupabase() || !userId) {
     state.settings = {
       new_words_per_session: 50,
+      new_words_per_day: 25,
+        reservoir: 50,
       cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
       cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -116,12 +124,16 @@ export async function subscribeRealtime(userId) {
   state.settings = settingsRow
     ? {
         new_words_per_session: settingsRow.new_words_per_session ?? 50,
+        new_words_per_day: settingsRow.new_words_per_day ?? 25,
+        reservoir: settingsRow.reservoir ?? 10,
         cycle_1: settingsRow.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
         cycle_2: settingsRow.cycle_2 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
         cycle_3: settingsRow.cycle_3 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       }
     : {
         new_words_per_session: 50,
+        new_words_per_day: 25,
+        reservoir: 50,
         cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
         cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
         cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -180,6 +192,7 @@ export function normalizeWord(row) {
   return {
     id: row.id,
     word: row.word,
+    created_at: row.created_at,
     status: row.status,
     cycle: row.cycle ?? 1,
     stage: row.stage ?? 1,
@@ -280,6 +293,8 @@ export async function refetchSettings(userId) {
   if (data) {
     state.settings = {
       new_words_per_session: data.new_words_per_session ?? 50,
+      new_words_per_day: data.new_words_per_day ?? 25,
+        reservoir: data.reservoir ?? 50,
       cycle_1: data.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
       cycle_2: data.cycle_2 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       cycle_3: data.cycle_3 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },

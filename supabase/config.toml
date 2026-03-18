@@ -3,6 +3,14 @@
 [functions.generate-content]
 verify_jwt = false
 
+# process-refill: processes refill_jobs queue (invoked by refill-cron or client)
+[functions.process-refill]
+verify_jwt = false
+
+# refill-cron: server-side refill trigger; schedule via cron-job.org (e.g. every hour)
+[functions.refill-cron]
+verify_jwt = false
+
 # migrate-audio-structure: one-time migration, uses service role internally
 [functions.migrate-audio-structure]
 verify_jwt = false
@@ -13,4 +21,8 @@ verify_jwt = false
 
 # generate-word-complete: card button - generate content + audio for one word
 [functions.generate-word-complete]
+verify_jwt = false
+
+# generate-all-tts-for-word: TTS for word + all stages (invoked by process-refill)
+[functions.generate-all-tts-for-word]
 verify_jwt = false

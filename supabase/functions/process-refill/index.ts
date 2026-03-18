@@ -29,24 +29,57 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     )
 
+    let userId: string | null = null
+    try {
+      const body = await req.json().catch(() => ({}))
+      userId = body?.user_id ?? null
+    } catch {
+      // ignore
+    }
+
     // Reset jobs stuck in "processing" (from timed-out runs)
     await supabase.from("refill_jobs").update({ status: "pending" }).eq("status", "processing")
 
-    // Prioritize tts_content (complete audio) > stage_content > audio > reservoir; process up to 6 per call
-    const { data: ttsJobs } = await supabase
+    // Retry failed jobs after 1 hour
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    await supabase
       .from("refill_jobs")
-      .select("*")
-      .eq("status", "pending")
-      .eq("job_type", "tts_content")
-      .limit(4)
-    const { data: otherJobs } = await supabase
-      .from("refill_jobs")
-      .select("*")
-      .eq("status", "pending")
-      .neq("job_type", "tts_content")
-      .order("job_type", { ascending: true })
-      .limit(4)
-    const jobs = [...(ttsJobs ?? []), ...(otherJobs ?? [])].slice(0, 6)
+      .update({ status: "pending" })
+      .eq("status", "failed")
+      .lt("processed_at", oneHourAgo)
+
+    // When user_id provided: prioritize this user's reservoir job first (for "Add words" flow)
+    let jobs: { id: number; user_id: string; job_type: string; payload: Record<string, unknown> }[] = []
+    if (userId) {
+      const { data: userReservoir } = await supabase
+        .from("refill_jobs")
+        .select("*")
+        .eq("status", "pending")
+        .eq("job_type", "reservoir")
+        .eq("user_id", userId)
+        .limit(1)
+      if (userReservoir?.length) {
+        jobs = userReservoir
+      }
+    }
+
+    if (!jobs.length) {
+      // Default: tts_content > stage_content > audio > reservoir; process up to 6 per call
+      const { data: ttsJobs } = await supabase
+        .from("refill_jobs")
+        .select("*")
+        .eq("status", "pending")
+        .eq("job_type", "tts_content")
+        .limit(4)
+      const { data: otherJobs } = await supabase
+        .from("refill_jobs")
+        .select("*")
+        .eq("status", "pending")
+        .neq("job_type", "tts_content")
+        .order("job_type", { ascending: true })
+        .limit(4)
+      jobs = [...(ttsJobs ?? []), ...(otherJobs ?? [])].slice(0, 6)
+    }
 
     if (!jobs?.length) {
       return new Response(

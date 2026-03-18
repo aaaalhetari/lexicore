@@ -6,34 +6,41 @@
     </div>
 
     <!-- Stats Row 1 -->
-    <div v-if="stats.total > 0" class="stats-bar">
-      <div class="stat-item">
+    <div v-if="stats.total > 0" class="stats-bar stats-bar-5">
+      <div class="stat-item" title="Total vocabulary count">
         <div class="stat-num">{{ stats.total }}</div>
         <div class="stat-label">Total</div>
       </div>
-      <div class="stat-item">
+      <div class="stat-item" title="Words in progress (learning today + before today)">
         <div class="stat-num">{{ stats.learning }}</div>
         <div class="stat-label">Learning</div>
       </div>
-      <div class="stat-item">
+      <div class="stat-item" title="Words you've mastered">
         <div class="stat-num">{{ stats.mastered }}</div>
         <div class="stat-label">Mastered</div>
       </div>
-      <div class="stat-item">
+      <div class="stat-item" :title="`Assigned for today (of ${stats.newWordsPerDay ?? 25} per day). See Settings → New words per day`">
+        <div class="stat-num">{{ stats.newWord }}</div>
+        <div class="stat-label">New words</div>
+        <div v-if="stats.newWordsPerDay" class="stat-hint">of {{ stats.newWordsPerDay }}/day</div>
+      </div>
+      <div class="stat-item" :title="`Buffer: pre-generated words. When &lt; ${stats.reservoir ?? 50} (reservoir), refill adds more. See Settings → Reservoir`">
         <div class="stat-num">{{ stats.waiting }}</div>
         <div class="stat-label">Waiting</div>
+        <div v-if="stats.reservoir" class="stat-hint">of {{ stats.reservoir }} target</div>
       </div>
     </div>
 
     <!-- Stats Row 2 -->
     <div v-if="stats.total > 0" class="stats-bar stats-bar-2">
-      <div class="stat-item">
+      <div class="stat-item" title="Questions answered today">
         <div class="stat-num">{{ stats.todayAnswered }}</div>
         <div class="stat-label">Questions Today</div>
       </div>
-      <div class="stat-item" title="Words you can practice today">
+      <div class="stat-item" :title="`Words you can practice today (max ${stats.sessionLimit ?? 50} per session). See Settings → Total words for today session`">
         <div class="stat-num">{{ stats.eligibleToday }}</div>
         <div class="stat-label">Available Today</div>
+        <div v-if="stats.sessionLimit" class="stat-hint">of {{ stats.sessionLimit }}/session</div>
       </div>
     </div>
 
@@ -67,10 +74,12 @@
 <script setup>
 import { computed } from 'vue'
 import { getStats } from '../store/data.js'
+import { hasSupabase } from '../lib/supabase.js'
 
 defineEmits(['start', 'words', 'settings'])
 
 const stats = computed(() => getStats())
+const hasSync = hasSupabase()
 </script>
 
 <style scoped>
@@ -106,6 +115,7 @@ const stats = computed(() => getStats())
   gap: 8px;
   margin-bottom: 10px;
 }
+.stats-bar-5 { grid-template-columns: repeat(5, 1fr); }
 .stats-bar-2 { grid-template-columns: 1fr 1fr; }
 .stat-item { text-align: center; }
 .stat-num {
@@ -120,6 +130,12 @@ const stats = computed(() => getStats())
   margin-top: 2px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+.stat-hint {
+  font-size: 0.6rem;
+  color: var(--text3);
+  margin-top: 1px;
+  opacity: 0.9;
 }
 
 .home-actions {

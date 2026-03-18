@@ -26,7 +26,7 @@
 import { ref, onMounted, onUnmounted, provide } from 'vue'
 import { subscribeRealtime, unsubscribeRealtime } from './store/realtime.js'
 import { getCurrentUser } from './store/sync.js'
-import { checkRefillNeeded } from './store/data.js'
+import { ensureSchema, assignDailyQuota } from './store/data.js'
 import HomeScreen from './components/HomeScreen.vue'
 import SessionScreen from './components/SessionScreen.vue'
 import SettingsScreen from './components/SettingsScreen.vue'
@@ -42,9 +42,12 @@ function goTo(name) {
 
 onMounted(async () => {
   try {
+    await ensureSchema()
     const user = await getCurrentUser()
     await subscribeRealtime(user?.id ?? null)
-    if (user) checkRefillNeeded()
+    if (user) {
+      await assignDailyQuota(user.id)
+    }
   } catch (err) {
     console.error('Init failed:', err)
   } finally {

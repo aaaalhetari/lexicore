@@ -226,12 +226,11 @@ Deno.serve(async (req) => {
       } else if (stage === 2) {
         const s2 = await generateStage2Sentences(word)
         updates.stage2_sentences = s2
-      } else       if (stage === 3) {
+      } else if (stage === 3) {
         const s3 = await generateStage3Sentences(word)
         updates.stage3_correct = s3.correct
         updates.stage3_incorrect = s3.incorrect
-        updates.stage3_explanations_correct = []
-        updates.stage3_explanations_incorrect = []
+        // stage3_explanations: تولّد من البطاقة عند الحاجة فقط
       }
 
       await supabase.from("vocabulary").update(updates).eq("id", word_id).eq("user_id", user_id)

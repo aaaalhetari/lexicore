@@ -40,10 +40,18 @@ const emit = defineEmits(['back'])
 const words = computed(() => getData().words)
 
 function statusClass(w) {
-  return { waiting: 'ws-waiting', learning: 'ws-learning', mastered: 'ws-mastered' }[w.status]
+  return {
+    waiting: 'ws-waiting',
+    new_word: 'ws-new-word',
+    learning_today: 'ws-learning-today',
+    learning_before_today: 'ws-learning',
+    mastered: 'ws-mastered',
+  }[w.status] || 'ws-waiting'
 }
 function statusLabel(w) {
-  return w.status === 'learning' ? `C${w.cycle} S${w.stage}` : w.status
+  if (w.status === 'learning_today' || w.status === 'learning_before_today') return `C${w.cycle} S${w.stage}`
+  if (w.status === 'new_word') return 'New'
+  return w.status?.replace(/_/g, ' ') || w.status
 }
 
 async function onImportCSV(e) {
@@ -81,6 +89,8 @@ function saveAndBack() {
   font-family: 'JetBrains Mono', monospace; white-space: nowrap;
 }
 .ws-waiting  { background: var(--surface2); color: var(--text3); }
+.ws-new-word { background: rgba(201,168,76,0.15); color: var(--gold); }
+.ws-learning-today { background: rgba(92,158,224,0.2); color: var(--blue); }
 .ws-learning { background: rgba(92,158,224,0.12); color: var(--blue); }
 .ws-mastered { background: var(--green-dim); color: var(--green); }
 </style>

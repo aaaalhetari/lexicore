@@ -119,7 +119,7 @@ import { Swiper, SwiperSlide } from 'swiper/vue'
 import 'swiper/css'
 import { useSession } from '../composables/useSession.js'
 import { useAudio } from '../composables/useAudio.js'
-import { getData, getStats, downloadJSON, checkRefillNeeded, processRefillJobs, preloadTTS, explainSentence } from '../store/data.js'
+import { getData, getStats, downloadJSON, preloadTTS, explainSentence } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser } from '../store/sync.js'
 import Stage1 from './stage/Stage1.vue'
@@ -260,23 +260,19 @@ async function generateWords() {
   if (!hasSupabase()) return
   generating.value = true
   try {
-    await checkRefillNeeded()
-    let result = await processRefillJobs()
-    if (result?.processed > 0) {
-      for (let i = 0; i < 20; i++) {
-        await checkRefillNeeded()
-        result = await processRefillJobs()
-        if (!result?.processed) break
-      }
-      phase.value = 'idle'
-      const r = await startSession()
-      if (r === 'started') phase.value = 'question'
-      else phase.value = 'done_today'
+    const r = await startSession()
+    if (r === 'started') {
+      phase.value = 'question'
+      if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
+      preloadTTS(currentWord.value)
+    } else if (r === 'no_words') {
+      phase.value = 'done_today'
+      alert('No words yet. New words are added automatically on the server. Try again later or add words in Word List.')
     } else {
-      alert('No pending jobs. Add words in Word List or wait for automatic refill.')
+      phase.value = 'done_today'
     }
   } catch (e) {
-    alert('Generate failed: ' + (e?.message || e))
+    alert('Start failed: ' + (e?.message || e))
   } finally {
     generating.value = false
   }

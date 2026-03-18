@@ -79,20 +79,63 @@ export async function updateSettings(settings) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  const wordsPerSession = settings.new_words_per_session ?? 50
-  await supabase.from('user_settings').upsert(
-    {
-      user_id: user.id,
-      new_words_per_session: wordsPerSession,
-      cycle_1: settings.cycle_1,
-      cycle_2: settings.cycle_2,
-      cycle_3: settings.cycle_3,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id' }
-  )
+  const wordsPerSession = Number(settings.new_words_per_session) || 50
+  const newWordsPerDay = Number(settings.new_words_per_day) || 25
+  const reservoirVal = Number(settings.reservoir) || 50
+
+  const stats = getStats()
+  const minNewWords = Math.max(1, stats.newWordsInLearningToday ?? 0)
+  if (newWordsPerDay < minNewWords) {
+    throw new Error(`New words per day cannot be less than ${minNewWords} (words in learning today)`)
+  }
+  if (newWordsPerDay > reservoirVal) {
+    throw new Error(`New words per day cannot exceed ${reservoirVal} (reservoir)`)
+  }
+
+  const { data: result, error } = await supabase.rpc('update_settings_with_trim', {
+    p_user_id: user.id,
+    p_new_words_per_session: wordsPerSession,
+    p_new_words_per_day: newWordsPerDay,
+    p_reservoir: reservoirVal,
+    p_cycle_1: settings.cycle_1,
+    p_cycle_2: settings.cycle_2,
+    p_cycle_3: settings.cycle_3,
+  })
+  if (error) throw error
+  if (result?.ok === false) {
+    throw new Error(result?.message ?? `Minimum is ${result?.min_allowed ?? minNewWords}`)
+  }
   const { refetchSettings } = await import('./realtime.js')
   await refetchSettings(user.id)
+}
+
+/** Ensure schema has new_words_per_day and reservoir columns (call on app init) */
+export async function ensureSchema() {
+  if (!hasSupabase()) return
+  try {
+    await supabase.rpc('ensure_user_settings_columns')
+  } catch (e) {
+    console.warn('ensureSchema:', e?.message ?? e)
+  }
+}
+
+/** Refresh settings from DB (call when opening Settings to get latest) */
+export async function refreshSettings() {
+  if (!hasSupabase()) return
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  const { refetchSettings } = await import('./realtime.js')
+  await refetchSettings(user.id)
+}
+
+/** Assign daily quota: waiting -> new_word (call on app init for fast start) */
+export async function assignDailyQuota(userId) {
+  if (!hasSupabase() || !userId) return
+  try {
+    await supabase.rpc('assign_daily_quota', { p_user_id: userId })
+  } catch (e) {
+    console.warn('assignDailyQuota:', e?.message ?? e)
+  }
 }
 
 /** Trigger reservoir refill check (backend queues job) */
@@ -104,10 +147,11 @@ export async function checkRefillNeeded() {
   await supabase.rpc('check_refill_needed', { p_user_id: user.id })
 }
 
-/** Invoke process-refill Edge Function (for cron or manual) */
-export async function processRefillJobs() {
-  if (!hasSupabase()) return
-  const { data, error } = await supabase.functions.invoke('process-refill')
+/** Invoke process-refill Edge Function (for cron or manual). Pass userId to prioritize this user's reservoir job. */
+export async function processRefillJobs(userId = null) {
+  if (!hasSupabase()) return null
+  const body = userId ? { user_id: userId } : {}
+  const { data, error } = await supabase.functions.invoke('process-refill', { body })
   if (error) throw error
   return data
 }
@@ -356,7 +400,6 @@ export async function addWord(wordData) {
     stage3_incorrect: wordData.s3_wrong ? [wordData.s3_wrong] : [],
   })
   if (error) return false
-  await checkRefillNeeded()
   return true
 }
 
@@ -388,7 +431,6 @@ export async function importCSV(text) {
     if (ok) added++
     existing.add(word)
   }
-  if (added > 0) await checkRefillNeeded()
   return added
 }
 
