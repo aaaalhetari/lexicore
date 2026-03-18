@@ -1,4 +1,4 @@
-// LexiCore: Process refill jobs (reservoir, stage content, audio)
+// LexiCore: Process refill jobs (reservoir, stage_content, tts_content)
 // Invoked by cron or manually to drain refill_jobs
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -48,7 +48,8 @@ Deno.serve(async (req) => {
       .eq("status", "failed")
       .lt("processed_at", oneHourAgo)
 
-    // When user_id provided: prioritize this user's reservoir job first (for "Add words" flow)
+    // When user_id provided: reservoir first (if any), then tts_content for this user
+    // Otherwise: tts_content > stage_content > reservoir
     let jobs: { id: number; user_id: string; job_type: string; payload: Record<string, unknown> }[] = []
     if (userId) {
       const { data: userReservoir } = await supabase
@@ -58,13 +59,17 @@ Deno.serve(async (req) => {
         .eq("job_type", "reservoir")
         .eq("user_id", userId)
         .limit(1)
-      if (userReservoir?.length) {
-        jobs = userReservoir
-      }
+      const { data: userTts } = await supabase
+        .from("refill_jobs")
+        .select("*")
+        .eq("status", "pending")
+        .eq("job_type", "tts_content")
+        .eq("user_id", userId)
+        .limit(5)
+      jobs = [...(userReservoir ?? []), ...(userTts ?? [])].slice(0, 6)
     }
 
     if (!jobs.length) {
-      // Default: tts_content > stage_content > audio > reservoir; process up to 6 per call
       const { data: ttsJobs } = await supabase
         .from("refill_jobs")
         .select("*")
@@ -110,18 +115,14 @@ Deno.serve(async (req) => {
             word: job.payload?.word,
             stage: job.payload?.stage,
           })
-        } else if (job.job_type === "audio") {
-          await invokeFunction("generate-audio", {
-            user_id: job.user_id,
-            word_id: job.payload?.word_id,
-            word: job.payload?.word,
-          })
         } else if (job.job_type === "tts_content") {
           await invokeFunction("generate-all-tts-for-word", {
             user_id: job.user_id,
             word_id: job.payload?.word_id,
             word: job.payload?.word,
           })
+        } else {
+          throw new Error(`Unknown job_type: ${job.job_type}`)
         }
 
         await supabase

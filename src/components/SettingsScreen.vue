@@ -53,6 +53,27 @@
           <button class="btn btn-secondary small-btn" @click="downloadJSON()">⬇ Download</button>
         </div>
       </div>
+      <div class="settings-section">
+        <h3>Maintenance</h3>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Process missing audio</div>
+            <div class="setting-desc">Generate audio for words that have content but no sound. Processes pending tts_content jobs.</div>
+          </div>
+          <button class="btn btn-secondary small-btn" :disabled="processingAudio || !user" @click="onProcessAudio">
+            {{ processingAudio ? '⏳ Processing…' : '🔊 Process audio' }}
+          </button>
+        </div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-label">Migrate audio structure</div>
+            <div class="setting-desc">Move audio to all-lexicore-audio/{word}/, delete tts cache. Run once.</div>
+          </div>
+          <button class="btn btn-secondary small-btn" :disabled="migrating" @click="onMigrateAudio">
+            {{ migrating ? '⏳ Migrating…' : '🔄 Migrate' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Cycles -->
@@ -85,25 +106,6 @@
           <p v-if="authError" class="auth-error">{{ authError }}</p>
         </div>
       </template>
-      <div v-if="user" class="audio-gen-section">
-        <h3>Audio storage</h3>
-        <button
-          class="btn btn-secondary migrate-btn"
-          :disabled="migratingAudio"
-          @click="runAudioMigration"
-          title="Move old audio to all-lexicore-audio folder and delete old files"
-        >
-          {{ migratingAudio ? 'Migrating…' : '📁 Migrate audio to new structure' }}
-        </button>
-        <button
-          class="btn btn-secondary cleanup-btn"
-          :disabled="cleaningAudio"
-          @click="runAudioCleanup"
-          title="Delete old folders (userId, tts), keep only all-lexicore-audio"
-        >
-          {{ cleaningAudio ? 'Cleaning…' : '🗑️ Delete old audio folders' }}
-        </button>
-      </div>
     </div>
 
     <!-- Sticky Buttons -->
@@ -116,7 +118,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { getSettings, getStats, updateSettings, refreshSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON, migrateAudioStructure, cleanupOldAudio } from '../store/data.js'
+import { getSettings, getStats, updateSettings, refreshSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON, migrateAudioStructure, checkRefillNeeded, processRefillJobs } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser, signInWithGitHub, signOut } from '../store/sync.js'
 
@@ -129,9 +131,44 @@ const snapshot = ref(null)
 const hasSync = hasSupabase()
 const user = ref(null)
 const authError = ref('')
-const migratingAudio = ref(false)
-const cleaningAudio = ref(false)
 const saving = ref(false)
+const migrating = ref(false)
+const processingAudio = ref(false)
+
+async function onProcessAudio() {
+  if (!hasSync || !user.value || processingAudio.value) return
+  processingAudio.value = true
+  let total = 0
+  try {
+    await checkRefillNeeded()
+    for (let i = 0; i < 10; i++) {
+      const r = await processRefillJobs(user.value.id)
+      const n = r?.processed ?? 0
+      total += n
+      if (!n) break
+      await new Promise((x) => setTimeout(x, 800))
+    }
+    if (total > 0) alert(`Processed ${total} jobs. Refresh to see audio.`)
+    else alert('No jobs processed. Check: 1) OPENAI_API_KEY in Supabase Secrets 2) Edge Function logs')
+  } catch (e) {
+    alert('Failed: ' + (e?.message ?? e))
+  } finally {
+    processingAudio.value = false
+  }
+}
+
+async function onMigrateAudio() {
+  if (!hasSync || migrating.value) return
+  migrating.value = true
+  try {
+    const r = await migrateAudioStructure()
+    alert(`Migrated: ${r?.migrated ?? 0} files, deleted ${r?.tts_deleted ?? 0} tts, updated ${r?.vocabulary_updated ?? 0} words`)
+  } catch (e) {
+    alert('Migration failed: ' + (e?.message ?? e))
+  } finally {
+    migrating.value = false
+  }
+}
 
 onMounted(async () => {
   if (hasSync) user.value = await getCurrentUser()
@@ -217,33 +254,6 @@ async function handleSignOut() {
   window.location.reload()
 }
 
-async function runAudioMigration() {
-  if (!hasSync || !user.value) return
-  if (!confirm('Migrate old audio files to all-lexicore-audio folder? Old files will be deleted.')) return
-  migratingAudio.value = true
-  try {
-    const result = await migrateAudioStructure()
-    alert(`Migration complete: ${result?.migrated ?? 0} migrated, ${result?.failed ?? 0} failed.`)
-  } catch (e) {
-    alert('Migration failed: ' + (e?.message || e))
-  } finally {
-    migratingAudio.value = false
-  }
-}
-
-async function runAudioCleanup() {
-  if (!hasSync || !user.value) return
-  if (!confirm('Delete all folders except all-lexicore-audio? This removes userId/ and tts/ folders permanently.')) return
-  cleaningAudio.value = true
-  try {
-    const result = await cleanupOldAudio()
-    alert(`Cleanup complete: ${result?.deleted ?? 0} files deleted.`)
-  } catch (e) {
-    alert('Cleanup failed: ' + (e?.message || e))
-  } finally {
-    cleaningAudio.value = false
-  }
-}
 </script>
 
 <style scoped>
@@ -293,8 +303,4 @@ async function runAudioCleanup() {
 .github-btn { width: 100%; }
 .auth-error { font-size: 0.9rem; color: var(--red); margin-top: 4px; }
 
-.audio-gen-section { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
-.audio-gen-section .btn { margin-top: 8px; }
-.audio-gen-section .migrate-btn,
-.audio-gen-section .cleanup-btn { margin-left: 8px; }
 </style>

@@ -25,7 +25,7 @@
 
     <!-- Sticky Buttons -->
     <div class="sticky-bottom">
-      <button class="btn btn-primary" @click="saveAndBack">Save & Back</button>
+      <button class="btn btn-primary" @click="saveAndBack">Export & Back</button>
       <button class="btn btn-secondary" @click="$emit('back')">Back without Saving</button>
     </div>
   </div>

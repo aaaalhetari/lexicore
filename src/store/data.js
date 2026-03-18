@@ -156,40 +156,35 @@ export async function processRefillJobs(userId = null) {
   return data
 }
 
-/** Migrate old audio files to all-lexicore-audio structure (one-time) */
+/** Migrate audio from old path (wordId-word) to new (word). Run once. See docs/MIGRATE_AUDIO.md */
 export async function migrateAudioStructure() {
   if (!hasSupabase()) throw new Error('Supabase required')
-  const { data, error } = await supabase.functions.invoke('migrate-audio-structure')
+  const { data, error } = await supabase.functions.invoke('migrate-audio-structure', { body: {} })
   if (error) throw error
   return data
 }
 
-/** Delete old audio folders (userId, tts), keep only all-lexicore-audio */
-export async function cleanupOldAudio() {
-  if (!hasSupabase()) throw new Error('Supabase required')
-  const { data, error } = await supabase.functions.invoke('cleanup-old-audio')
-  if (error) throw error
-  return data
-}
-
-/** Create jobs to complete all vocabulary (content + audio), then process them */
-export async function completeVocabulary(userId) {
-  if (!hasSupabase()) throw new Error('Supabase required')
-  const { data, error } = await supabase.functions.invoke('complete-vocabulary', {
-    body: { user_id: userId },
-  })
-  if (error) throw error
-  return data
-}
-
-/** Generate complete content + audio for one word (card button) */
+/** Generate complete content + audio for one word (card button)
+ * Primary: generate-content stage_content x3 (established path, uses refill for TTS)
+ * Fallback: generate-word-complete (all-in-one if available) */
 export async function generateWordComplete(userId, wordId, word) {
   if (!hasSupabase()) throw new Error('Supabase required')
-  const { data, error } = await supabase.functions.invoke('generate-word-complete', {
-    body: { user_id: userId, word_id: Number(wordId), word: (word ?? '').trim() },
-  })
-  if (error) throw error
-  return data
+  const wid = Number(wordId)
+  const w = (word ?? '').trim()
+  if (!wid || !w) throw new Error('word_id and word required')
+
+  // Primary: generate-content stage_content (stage 1, 2, 3)
+  for (const stage of [1, 2, 3]) {
+    const { data, error } = await supabase.functions.invoke('generate-content', {
+      body: { user_id: userId, job_type: 'stage_content', word_id: wid, word: w, stage },
+    })
+    if (error) {
+      const msg = data?.error ?? error?.message ?? String(error)
+      throw new Error(`Stage ${stage}: ${msg}`)
+    }
+    if (data?.error) throw new Error(data.error)
+  }
+  return { ok: true, content_updated: true }
 }
 
 /** Get AI explanation for Stage 3 (fallback when not in DB) */
@@ -209,92 +204,6 @@ export async function explainSentence(userId, word, sentence, isCorrect) {
     throw new Error(msg)
   }
   return data?.explanation ?? null
-}
-
-/** Generate AI content for a single word's stage (definitions, sentences) */
-export async function generateContentForWord(userId, wordId, word, stage) {
-  if (!hasSupabase()) throw new Error('Supabase not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env')
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('Sign in required to generate content')
-  await supabase.auth.refreshSession()
-  const { data, error } = await supabase.functions.invoke('generate-content', {
-    body: { user_id: userId, job_type: 'stage_content', word_id: Number(wordId), word, stage },
-  })
-  if (error) {
-    const msg = data?.error ?? error?.message ?? String(error)
-    const is401 = String(error).includes('401') || (error?.context?.status === 401)
-    throw new Error(is401
-      ? 'Session expired. Please sign out and sign in again, then try again.'
-      : msg)
-  }
-  await refetchWord(wordId, userId)
-  // Retry refetch if DB replication may be delayed (up to 2 retries)
-  for (let i = 0; i < 2; i++) {
-    const w = getWordById(wordId)
-    if (w && hasRealContentForStage(w, stage)) break
-    await new Promise((r) => setTimeout(r, 800))
-    await refetchWord(wordId, userId)
-  }
-  return data
-}
-
-function hasRealContentForStage(word, stage) {
-  if (!word) return false
-  if (stage === 1) {
-    const defs = word.stage1_definitions ?? []
-    const correct = defs.find((d) => d.is_correct)
-    const text = (correct?.definition ?? '').trim()
-    const placeholder = `Definition for "${word.word ?? ''}"`
-    return text && text !== placeholder
-  }
-  if (stage === 2) {
-    const s2 = word.stage2_sentences ?? []
-    const first = s2[0]
-    const text = (first?.sentence ?? '').trim()
-    return text && text !== 'Use ___ in context.'
-  }
-  if (stage === 3) {
-    const c = (word.stage3_correct ?? [])[0]
-    const i = (word.stage3_incorrect ?? [])[0]
-    const placeholder = `Is "${word.word ?? ''}" used correctly?`
-    const cStr = (typeof c === 'string' ? c : String(c ?? '')).trim()
-    const iStr = (typeof i === 'string' ? i : String(i ?? '')).trim()
-    return (cStr && cStr !== placeholder) || (iStr && iStr !== placeholder)
-  }
-  return false
-}
-
-/** Generate audio for a single word - direct call (bypasses job queue) */
-export async function generateAudioForWord(userId, wordId, word) {
-  if (!hasSupabase()) return null
-  const { data, error } = await supabase.functions.invoke('generate-audio', {
-    body: { user_id: userId, word_id: Number(wordId), word },
-  })
-  if (error) {
-    const msg = error?.context?.error ?? data?.error ?? error?.message ?? String(error)
-    throw new Error(msg)
-  }
-  return data?.audio_word
-}
-
-/** Generate TTS for definition/sentence and save to vocabulary (sync with cloud) */
-export async function generateTTSForContent(userId, wordId, word, text, stage, index, subType) {
-  if (!hasSupabase()) return null
-  const body = {
-    user_id: userId,
-    word_id: Number(wordId),
-    word: (word ?? '').trim(),
-    text: (text ?? '').trim(),
-    stage,
-    index,
-  }
-  if (stage === 3 && subType) body.sub_type = subType
-  const { data, error } = await supabase.functions.invoke('generate-tts-for-content', { body })
-  if (error) {
-    const msg = error?.context?.error ?? data?.error ?? error?.message ?? String(error)
-    throw new Error(msg)
-  }
-  return data?.url
 }
 
 const _ttsCache = new Map()

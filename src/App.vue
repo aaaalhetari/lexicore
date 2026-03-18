@@ -26,7 +26,7 @@
 import { ref, onMounted, onUnmounted, provide } from 'vue'
 import { subscribeRealtime, unsubscribeRealtime } from './store/realtime.js'
 import { getCurrentUser } from './store/sync.js'
-import { ensureSchema, assignDailyQuota } from './store/data.js'
+import { ensureSchema, assignDailyQuota, checkRefillNeeded, processRefillJobs } from './store/data.js'
 import HomeScreen from './components/HomeScreen.vue'
 import SessionScreen from './components/SessionScreen.vue'
 import SettingsScreen from './components/SettingsScreen.vue'
@@ -47,6 +47,13 @@ onMounted(async () => {
     await subscribeRealtime(user?.id ?? null)
     if (user) {
       await assignDailyQuota(user.id)
+      checkRefillNeeded().then(async () => {
+        for (let i = 0; i < 3; i++) {
+          const r = await processRefillJobs(user.id)
+          if (!r?.processed) break
+          await new Promise((x) => setTimeout(x, 500))
+        }
+      }).catch(() => {})
     }
   } catch (err) {
     console.error('Init failed:', err)

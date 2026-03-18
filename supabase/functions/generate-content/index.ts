@@ -34,6 +34,26 @@ async function invokeGenerateAllTTS(
   }
 }
 
+/** Invoke generate-all-tts-for-word and await — couples audio with text in same flow */
+async function invokeGenerateAllTTSAndWait(userId: string, wordId: number, word: string): Promise<void> {
+  try {
+    const res = await fetch(`${FUNCTIONS_URL}/generate-all-tts-for-word`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_ROLE}`,
+      },
+      body: JSON.stringify({ user_id: userId, word_id: wordId, word }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      console.warn("generate-all-tts-for-word failed:", text)
+    }
+  } catch (e) {
+    console.warn("generate-all-tts-for-word invoke error:", e)
+  }
+}
+
 interface GenerateRequest {
   user_id: string
   job_type: "reservoir" | "stage_content" | "explain_sentence"
@@ -154,7 +174,30 @@ Deno.serve(async (req) => {
     }
 
     if (job_type === "reservoir") {
-      // Refill waiting reservoir with new words
+      // Refill waiting reservoir with new words — only when waiting < reservoir
+      const { count: waitingCount } = await supabase
+        .from("vocabulary")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user_id)
+        .eq("status", "waiting")
+
+      const { data: settings } = await supabase
+        .from("user_settings")
+        .select("reservoir")
+        .eq("user_id", user_id)
+        .single()
+
+      const reservoir = settings?.reservoir ?? 50
+      const waiting = waitingCount ?? 0
+      if (waiting >= reservoir) {
+        return new Response(
+          JSON.stringify({ added: 0, skipped: "waiting >= reservoir" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        )
+      }
+
+      const toAdd = Math.min(count ?? 20, Math.max(0, reservoir - waiting))
+
       let { data: bank } = await supabase
         .from("word_bank")
         .select("word")
@@ -170,7 +213,7 @@ Deno.serve(async (req) => {
         .eq("user_id", user_id)
 
       const existingSet = new Set((existing.data ?? []).map((r) => r.word.toLowerCase()))
-      const available = (bank ?? []).filter((r) => !existingSet.has(r.word.toLowerCase())).slice(0, count)
+      const available = (bank ?? []).filter((r) => !existingSet.has(r.word.toLowerCase())).slice(0, toAdd)
 
       const inserted: { id: number; word: string }[] = []
       for (const row of available) {
@@ -201,7 +244,7 @@ Deno.serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ added: available.length }),
+        JSON.stringify({ added: inserted.length }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
@@ -235,10 +278,10 @@ Deno.serve(async (req) => {
 
       await supabase.from("vocabulary").update(updates).eq("id", word_id).eq("user_id", user_id)
 
-      invokeGenerateAllTTS(supabase, user_id, word_id, word)
+      await invokeGenerateAllTTSAndWait(user_id, word_id, word)
 
       return new Response(
-        JSON.stringify({ updated: true }),
+        JSON.stringify({ updated: true, audio: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }

@@ -57,8 +57,8 @@
           :centered-slides="true"
           :space-between="20"
           :initial-slide="displayIndex"
-          :allow-slide-prev="false"
-          :allow-slide-next="!!feedback && displayIndex < displayOrder.length - 1"
+          :allow-slide-prev="true"
+          :allow-slide-next="true"
           @swiper="onSwiper"
           @touch-start="onSwiperTouchStart"
           @slide-change="onSlideChange"
@@ -66,12 +66,12 @@
           <SwiperSlide
             v-for="(word, idx) in displayOrder"
             :key="'slide-' + (word?.id ?? idx)"
-            class="session-slide"
+            :class="['session-slide', { 'slide-target': idx === learningTargetIndex }]"
           >
             <div class="slide-inner">
               <Stage1
                 v-if="((idx === displayIndex ? (displayWord ?? currentWord) : word)?.stage ?? 1) === 1"
-                :key="'s1-' + (word?.id ?? idx)"
+                :key="'s1-' + (word?.id ?? idx) + '-' + contentRefreshKey"
                 :word="idx === displayIndex ? (displayWord ?? currentWord) : word"
                 :distractorPool="distractorPool"
                 :feedback="idx === displayIndex ? feedback : null"
@@ -82,7 +82,7 @@
               />
               <Stage2
                 v-else-if="(idx === displayIndex ? (displayWord ?? currentWord) : word)?.stage === 2"
-                :key="'s2-' + (word?.id ?? idx)"
+                :key="'s2-' + (word?.id ?? idx) + '-' + contentRefreshKey"
                 :word="idx === displayIndex ? (displayWord ?? currentWord) : word"
                 :feedback="idx === displayIndex ? feedback : null"
                 :sessionStats="idx === displayIndex ? sessionStats : null"
@@ -92,7 +92,7 @@
               />
               <Stage3
                 v-else-if="(idx === displayIndex ? (displayWord ?? currentWord) : word)?.stage === 3"
-                :key="'s3-' + (word?.id ?? idx)"
+                :key="'s3-' + (word?.id ?? idx) + '-' + contentRefreshKey"
                 :word="idx === displayIndex ? (displayWord ?? currentWord) : word"
                 :useCorrect="s3UseCorrect"
                 :feedback="idx === displayIndex ? feedback : null"
@@ -107,7 +107,7 @@
             </div>
           </SwiperSlide>
         </Swiper>
-        <div v-if="feedback" class="swipe-next-hint">← swipe to next →</div>
+        <div class="swipe-next-hint">← swipe to browse cards →</div>
       </div>
     </div>
   </div>
@@ -119,7 +119,7 @@ import { Swiper, SwiperSlide } from 'swiper/vue'
 import 'swiper/css'
 import { useSession } from '../composables/useSession.js'
 import { useAudio } from '../composables/useAudio.js'
-import { getData, getStats, downloadJSON, preloadTTS, explainSentence } from '../store/data.js'
+import { getData, getStats, downloadJSON, preloadTTS, explainSentence, checkRefillNeeded, processRefillJobs } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser } from '../store/sync.js'
 import Stage1 from './stage/Stage1.vue'
@@ -160,6 +160,7 @@ const s3UseCorrect = ref(true)
 const errorMessage = ref('')
 const generating = ref(false)
 const currentUser = ref(null)
+const learningTargetIndex = ref(0)
 
 const stats = computed(() => getStats())
 const masteredCount = computed(() => getData().words.filter(w => w.status === 'mastered').length)
@@ -218,12 +219,14 @@ function doNextCleanup() {
 
 function onSlideChange(swiper) {
   const realIndex = swiper.realIndex
-  if (!feedback.value || nextLock.value) return
-  // Only react when user swiped forward (Swiper already moved - we just sync state)
-  if (realIndex <= displayIndex.value) return
+  if (nextLock.value) return
   nextLock.value = true
+  const hadFeedback = !!feedback.value
   doNextCleanup()
   advanceToDisplayIndex(realIndex)
+  if (hadFeedback && realIndex > learningTargetIndex.value) {
+    learningTargetIndex.value = realIndex
+  }
   preloadTTS(currentWord.value)
   questionKey.value++
   if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
@@ -257,19 +260,22 @@ onMounted(async () => {
 })
 
 async function generateWords() {
-  if (!hasSupabase()) return
+  if (!hasSupabase() || !currentUser.value) return
   generating.value = true
   try {
+    await checkRefillNeeded()
+    await processRefillJobs(currentUser.value.id)
+    await new Promise((r) => setTimeout(r, 2500))
     const r = await startSession()
     if (r === 'started') {
       phase.value = 'question'
       if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
       preloadTTS(currentWord.value)
-    } else if (r === 'no_words') {
-      phase.value = 'done_today'
-      alert('No words yet. New words are added automatically on the server. Try again later or add words in Word List.')
     } else {
       phase.value = 'done_today'
+      if (getStats().total === 0) {
+        alert('No words yet. New words are being generated on the server. Try again in a minute or add words manually in Word List.')
+      }
     }
   } catch (e) {
     alert('Start failed: ' + (e?.message || e))
@@ -395,6 +401,7 @@ function next() {
   doNextCleanup()
   const hasMore = advance()
   if (!hasMore) { phase.value = 'end'; nextLock.value = false; return }
+  learningTargetIndex.value = displayIndex.value
   if (swiperRef.value && !swiperRef.value.destroyed) {
     swiperRef.value.slideTo(displayIndex.value)
   }
@@ -411,6 +418,7 @@ function onSkip() {
   doNextCleanup()
   const hasMore = advance()
   if (!hasMore) { phase.value = 'end'; nextLock.value = false; return }
+  learningTargetIndex.value = displayIndex.value
   if (swiperRef.value && !swiperRef.value.destroyed) {
     swiperRef.value.slideTo(displayIndex.value)
   }
@@ -506,6 +514,11 @@ function onSkip() {
   width: 100%;
   max-width: 100%;
   flex-shrink: 0;
+}
+
+/* البطاقة المستهدفة واضحة، الباقي أغمق قليلاً */
+.session-swiper :deep(.swiper-slide:not(.slide-target)) {
+  opacity: 0.6;
 }
 
 .swipe-next-hint {

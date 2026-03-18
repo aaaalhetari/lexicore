@@ -1,5 +1,5 @@
-// LexiCore: One-time migration - move old audio to all-lexicore-audio/{userId}/{wordId}-{word}/word.mp3
-// Run manually: supabase functions invoke migrate-audio-structure
+// LexiCore: Migrate audio to flat structure all-lexicore-audio/{word}/
+// Moves from: {userId}/{wordId}-{word}/, {userId}/{word}/, and deletes tts/
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
@@ -14,19 +14,14 @@ function sanitizeWord(word: string): string {
     .slice(0, 40) || "word"
 }
 
-/** Extract storage path from public URL. Returns null if invalid. */
-function pathFromUrl(url: string): string | null {
-  try {
-    const match = url.match(/lexicore-audio\/(.+)$/)
-    return match ? match[1] : null
-  } catch {
-    return null
-  }
-}
-
-/** Check if URL uses old format (not under all-lexicore-audio) */
-function isOldFormat(path: string): boolean {
-  return !path.startsWith("all-lexicore-audio/")
+/** Extract word from folder name: "12345-advice" -> "advice", "advice" -> "advice" */
+function extractWordFromFolder(folderName: string): string | null {
+  if (!folderName) return null
+  const parts = folderName.split("-")
+  if (parts.length === 1) return sanitizeWord(parts[0])
+  const first = parts[0]
+  if (/^\d+$/.test(first)) return parts.slice(1).join("-") ? sanitizeWord(parts.slice(1).join("-")) : null
+  return sanitizeWord(folderName)
 }
 
 Deno.serve(async (req) => {
@@ -38,78 +33,120 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     )
 
-    const { data: rows, error } = await supabase
-      .from("vocabulary")
-      .select("id, user_id, word, audio_word")
-      .not("audio_word", "is", null)
+    const bucket = "lexicore-audio"
+    const prefix = "all-lexicore-audio"
 
-    if (error) throw error
-    if (!rows?.length) {
+    let totalMoved = 0
+    let totalDeleted = 0
+    const updatedWords = new Set<string>()
+
+    // 1. Delete tts folder files (hash-based, can't map to words)
+    const { data: ttsFiles } = await supabase.storage.from(bucket).list(`${prefix}/tts`, { limit: 1000 })
+    if (ttsFiles?.length) {
+      const toDelete = ttsFiles.filter((f) => f.name && !f.name.endsWith("/")).map((f) => `${prefix}/tts/${f.name}`)
+      if (toDelete.length) {
+        const { error: delErr } = await supabase.storage.from(bucket).remove(toDelete)
+        if (!delErr) totalDeleted = toDelete.length
+      }
+    }
+
+    // 2. List top-level under all-lexicore-audio
+    const { data: topLevel, error: topErr } = await supabase.storage.from(bucket).list(prefix, { limit: 500 })
+    if (topErr || !topLevel?.length) {
       return new Response(
-        JSON.stringify({ migrated: 0, message: "No vocabulary with audio_word" }),
+        JSON.stringify({ migrated: totalMoved, tts_deleted: totalDeleted, vocabulary_updated: updatedWords.size }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
 
-    let migrated = 0
-    let failed = 0
+    // 3. For each item that looks like userId (UUID), list subfolders
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    for (const item of topLevel) {
+      if (!item.name || item.name === "tts") continue
+      if (!uuidRegex.test(item.name)) continue
 
-    for (const row of rows) {
-      const url = row.audio_word as string
-      if (!url) continue
+      const userId = item.name
+      const { data: subFolders } = await supabase.storage.from(bucket).list(`${prefix}/${userId}`, { limit: 500 })
+      if (!subFolders?.length) continue
 
-      const oldPath = pathFromUrl(url)
-      if (!oldPath || !isOldFormat(oldPath)) continue
+      // Delete userId/tts/ files (hash-based, can't map to words)
+      const ttsSub = subFolders.find((f) => f.name === "tts")
+      if (ttsSub) {
+        const { data: userTtsFiles } = await supabase.storage.from(bucket).list(`${prefix}/${userId}/tts`, { limit: 1000 })
+        const toDel = (userTtsFiles ?? []).filter((f) => f.name && !f.name.endsWith("/")).map((f) => `${prefix}/${userId}/tts/${f.name}`)
+        if (toDel.length) await supabase.storage.from(bucket).remove(toDel)
+        totalDeleted += toDel.length
+      }
 
-      try {
-        const { data: blob, error: downloadErr } = await supabase.storage
-          .from("lexicore-audio")
-          .download(oldPath)
+      for (const sub of subFolders) {
+        if (sub.name === "tts") continue
+        if (!sub.name) continue
+        const word = extractWordFromFolder(sub.name)
+        if (!word) continue
 
-        if (downloadErr || !blob) {
-          console.warn("Skip (download failed):", row.id, oldPath, downloadErr)
-          failed++
-          continue
+        const oldFolderPath = `${prefix}/${userId}/${sub.name}`
+        const newFolderPath = `${prefix}/${word}`
+
+        const { data: fileList } = await supabase.storage.from(bucket).list(oldFolderPath, { limit: 100 })
+        if (!fileList?.length) continue
+
+        const toMove = fileList.filter((f) => f.name && !f.name.endsWith("/"))
+        for (const file of toMove) {
+          const oldPath = `${oldFolderPath}/${file.name}`
+          const newPath = `${newFolderPath}/${file.name}`
+
+          const { error: moveErr } = await supabase.storage.from(bucket).move(oldPath, newPath)
+          if (!moveErr) {
+            totalMoved++
+            updatedWords.add(word)
+          }
         }
-
-        const buffer = await blob.arrayBuffer()
-        const safe = sanitizeWord(row.word)
-        const newPath = `all-lexicore-audio/${row.user_id}/${row.id}-${safe}/word.mp3`
-
-        const { error: uploadErr } = await supabase.storage
-          .from("lexicore-audio")
-          .upload(newPath, buffer, { contentType: "audio/mpeg", upsert: true })
-
-        if (uploadErr) {
-          console.warn("Skip (upload failed):", row.id, uploadErr)
-          failed++
-          continue
-        }
-
-        const { data: urlData } = supabase.storage.from("lexicore-audio").getPublicUrl(newPath)
-
-        const { error: updateErr } = await supabase
-          .from("vocabulary")
-          .update({ audio_word: urlData.publicUrl })
-          .eq("id", row.id)
-          .eq("user_id", row.user_id)
-
-        if (updateErr) {
-          console.warn("Skip (update failed):", row.id, updateErr)
-          failed++
-          continue
-        }
-
-        await supabase.storage.from("lexicore-audio").remove([oldPath])
-        migrated++
-      } catch (e) {
-        console.warn("Skip (error):", row.id, e)
-        failed++
       }
     }
 
+    // 4. Update vocabulary: all rows where sanitizeWord(word) matches
+    const { data: allVocab } = await supabase
+      .from("vocabulary")
+      .select("id, user_id, word, stage1_definitions, stage2_sentences, stage3_correct, stage3_incorrect")
+
+    for (const row of allVocab ?? []) {
+      const safe = sanitizeWord(row.word ?? "")
+      if (!updatedWords.has(safe)) continue
+
+      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(`${prefix}/${safe}/word.mp3`)
+      const baseUrl = urlData.publicUrl.replace(/\/word\.mp3$/, "")
+
+      const defs = (row.stage1_definitions ?? []) as unknown[]
+      const sents = (row.stage2_sentences ?? []) as unknown[]
+      const correct = (row.stage3_correct ?? []) as string[]
+      const incorrect = (row.stage3_incorrect ?? []) as string[]
+
+      const audioStage1 = defs.map((_, i) => `${baseUrl}/stage1_${i}.mp3`)
+      const audioStage2 = sents.map((_, i) => `${baseUrl}/stage2_${i}.mp3`)
+      const audioStage3Correct = correct.map((_, i) => `${baseUrl}/stage3_correct_${i}.mp3`)
+      const audioStage3Incorrect = incorrect.map((_, i) => `${baseUrl}/stage3_incorrect_${i}.mp3`)
+
+      await supabase
+        .from("vocabulary")
+        .update({
+          audio_word: `${baseUrl}/word.mp3`,
+          audio_stage1_definitions: audioStage1,
+          audio_stage2_sentences: audioStage2,
+          audio_stage3_correct: audioStage3Correct,
+          audio_stage3_incorrect: audioStage3Incorrect,
+        })
+        .eq("id", row.id)
+        .eq("user_id", row.user_id)
+    }
+
+    const vocabUpdated = (allVocab ?? []).filter((r) => updatedWords.has(sanitizeWord(r.word ?? ""))).length
+
     return new Response(
-      JSON.stringify({ migrated, failed, total: rows.length }),
+      JSON.stringify({
+        migrated: totalMoved,
+        tts_deleted: totalDeleted,
+        vocabulary_updated: vocabUpdated,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
   } catch (err) {

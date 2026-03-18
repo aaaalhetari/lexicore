@@ -1,5 +1,5 @@
 // LexiCore: Generate all TTS for a word (word + stage1 defs + stage2 sents + stage3 correct/incorrect)
-// Storage: all-lexicore-audio/{userId}/{wordId}-{word}/word.mp3, stage1_0.mp3, stage2_0.mp3, etc.
+// Storage: all-lexicore-audio/{word}/word.mp3, stage1_0.mp3, stage2_0.mp3, etc.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
@@ -35,17 +35,17 @@ async function generateTTS(text: string): Promise<ArrayBuffer> {
 }
 
 function getStoragePath(
-  userId: string,
-  wordId: number,
+  _userId: string,
+  _wordId: number,
   word: string,
   stage: number,
   index: number,
   subType?: string
 ): string {
   const safe = sanitizeWord(word)
-  if (stage === 0) return `all-lexicore-audio/${userId}/${wordId}-${safe}/word.mp3`
+  if (stage === 0) return `all-lexicore-audio/${safe}/word.mp3`
   const suffix = subType ? `_${subType}_${index}` : `_${index}`
-  return `all-lexicore-audio/${userId}/${wordId}-${safe}/stage${stage}${suffix}.mp3`
+  return `all-lexicore-audio/${safe}/stage${stage}${suffix}.mp3`
 }
 
 async function sleep(ms: number) {

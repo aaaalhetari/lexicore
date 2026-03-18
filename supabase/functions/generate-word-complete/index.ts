@@ -94,37 +94,21 @@ async function generateTTS(text: string): Promise<ArrayBuffer> {
 }
 
 function getStoragePath(
-  userId: string,
-  wordId: number,
+  _userId: string,
+  _wordId: number,
   word: string,
   stage: number,
   index: number,
   subType?: string
 ): string {
   const safe = sanitizeWord(word)
-  if (stage === 0) return `all-lexicore-audio/${userId}/${wordId}-${safe}/word.mp3`
+  if (stage === 0) return `all-lexicore-audio/${safe}/word.mp3`
   const suffix = subType ? `_${subType}_${index}` : `_${index}`
-  return `all-lexicore-audio/${userId}/${wordId}-${safe}/stage${stage}${suffix}.mp3`
+  return `all-lexicore-audio/${safe}/stage${stage}${suffix}.mp3`
 }
 
 async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
-}
-
-function isPlaceholderDef(def: string, word: string): boolean {
-  const s = (def ?? "").trim()
-  return !s || s.startsWith("Definition for") || s === `Definition for "${word}"`
-}
-
-function isPlaceholderSent(sent: string): boolean {
-  const s = (sent ?? "").trim()
-  return !s || s === "Use ___ in context."
-}
-
-function isPlaceholderS3(arr: string[], word: string): boolean {
-  if (!arr?.length) return true
-  const first = (arr[0] ?? "").trim()
-  return !first || first === `Is "${word}" used correctly?`
 }
 
 Deno.serve(async (req) => {
@@ -159,40 +143,27 @@ Deno.serve(async (req) => {
     let correct = (vocab.stage3_correct ?? []) as string[]
     let incorrect = (vocab.stage3_incorrect ?? []) as string[]
 
-    const correctDef = defs.find((d) => d.is_correct)
-    const defText = (correctDef?.definition ?? "").trim()
-    const firstSent = sents[0]?.sentence ?? ""
-    const needsContent =
-      isPlaceholderDef(defText, word) ||
-      defs.length === 0 ||
-      isPlaceholderSent(firstSent) ||
-      sents.length === 0 ||
-      isPlaceholderS3(correct, word) ||
-      isPlaceholderS3(incorrect, word)
-
-    if (needsContent) {
-      defs = await generateStage1Definitions(word)
-      sents = await generateStage2Sentences(word)
-      const s3 = await generateStage3Sentences(word)
-      correct = s3.correct
-      incorrect = s3.incorrect
-      await supabase
-        .from("vocabulary")
-        .update({
-          stage1_definitions: defs,
-          stage2_sentences: sents,
-          stage3_correct: correct,
-          stage3_incorrect: incorrect,
-          stage3_explanations_correct: [],
-          stage3_explanations_incorrect: [],
-        })
-        .eq("id", word_id)
-        .eq("user_id", user_id)
-    }
+    defs = await generateStage1Definitions(word)
+    sents = await generateStage2Sentences(word)
+    const s3 = await generateStage3Sentences(word)
+    correct = s3.correct
+    incorrect = s3.incorrect
+    await supabase
+      .from("vocabulary")
+      .update({
+        stage1_definitions: defs,
+        stage2_sentences: sents,
+        stage3_correct: correct,
+        stage3_incorrect: incorrect,
+        stage3_explanations_correct: [],
+        stage3_explanations_incorrect: [],
+      })
+      .eq("id", word_id)
+      .eq("user_id", user_id)
 
     if (!OPENAI_API_KEY) {
       return new Response(
-        JSON.stringify({ ok: true, content_updated: needsContent, audio_skipped: true }),
+        JSON.stringify({ ok: true, content_updated: true, audio_skipped: true }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       )
     }
@@ -299,7 +270,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, content_updated: needsContent }),
+      JSON.stringify({ ok: true, content_updated: true }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
   } catch (err) {

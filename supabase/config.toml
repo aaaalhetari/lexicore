@@ -11,18 +11,18 @@ verify_jwt = false
 [functions.refill-cron]
 verify_jwt = false
 
-# migrate-audio-structure: one-time migration, uses service role internally
-[functions.migrate-audio-structure]
-verify_jwt = false
-
-# cleanup-old-audio: delete old folders, keep all-lexicore-audio only
-[functions.cleanup-old-audio]
-verify_jwt = false
-
 # generate-word-complete: card button - generate content + audio for one word
 [functions.generate-word-complete]
 verify_jwt = false
 
 # generate-all-tts-for-word: TTS for word + all stages (invoked by process-refill)
 [functions.generate-all-tts-for-word]
+verify_jwt = false
+
+# generate-tts: single-text TTS (invoked by useAudio, preloadTTS)
+[functions.generate-tts]
+verify_jwt = false
+
+# migrate-audio-structure: one-time migration (old path wordId-word -> word)
+[functions.migrate-audio-structure]
 verify_jwt = false
