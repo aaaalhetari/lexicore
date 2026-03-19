@@ -236,6 +236,9 @@ function answer(val) {
   color: var(--text);
   margin: 0 0 8px;
   font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .blank {
   display: inline-block;
@@ -324,6 +327,7 @@ function answer(val) {
   gap: 16px;
   border: 1px solid var(--border);
   transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
+  min-height: 0;
 }
 .swipe-card.feedback-correct {
   background: rgba(76, 175, 130, 0.12) !important;
@@ -364,7 +368,7 @@ function answer(val) {
 .stage2-root {
   display: flex; flex-direction: column; min-height: 0;
 }
-.stage2-root .card { flex-shrink: 0; position: relative; }
+.stage2-root .card { flex: 1; min-height: 0; position: relative; }
 .card.placeholder-only {
   display: flex;
   flex-direction: column;

@@ -41,7 +41,7 @@
         <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
       </div>
       <div class="definition-label">Choose the right meaning</div>
-      <div class="definition-text">{{ currentDefinition }}</div>
+      <div class="definition-text no-swipe-scroll definition-scroll">{{ currentDefinition }}</div>
       <div class="choices-inline">
         <button
           v-for="choice in choices"
@@ -192,6 +192,7 @@ function answer(id) {
   gap: 14px;
   border: 1px solid var(--border);
   transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
+  min-height: 0;
 }
 .card-stats { flex-shrink: 0; width: 100%; }
 .card-toolbar {
@@ -237,6 +238,7 @@ function answer(id) {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-top: 8px;
+  flex-shrink: 0;
 }
 .choice-btn {
   background: var(--surface2);
@@ -250,6 +252,8 @@ function answer(id) {
   font-family: 'JetBrains Mono', monospace;
   font-size: 1rem;
   color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .choice-btn:hover:not(:disabled) {
   border-color: var(--gold);
@@ -272,8 +276,16 @@ function answer(id) {
   display: flex; flex-direction: column; min-height: 0;
 }
 .stage1-root .card {
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
   cursor: pointer;
+}
+.definition-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .card.placeholder-only {
   display: flex;

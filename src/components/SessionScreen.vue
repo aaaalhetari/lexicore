@@ -52,27 +52,23 @@
       <div class="session-content">
         <Swiper
           :key="'swiper-' + displayOrder.length"
-          :modules="[FreeMode]"
+          :modules="[FreeMode, Mousewheel]"
           class="session-swiper"
           direction="vertical"
           :slides-per-view="1"
           :space-between="16"
           :initial-slide="displayIndex"
-          :speed="520"
-          :touch-ratio="0.7"
-          :short-swipes="false"
-          :free-mode="{
-            enabled: true,
-            sticky: true,
-            momentum: true,
-            momentumBounce: false,
-            momentumRatio: 1.22,
-            momentumVelocityRatio: 1.18,
-            minimumVelocity: 0.04,
+          :speed="320"
+          :free-mode="false"
+          :simulate-touch="true"
+          :allow-touch-move="true"
+          :mousewheel="{
+            forceToAxis: true,
+            sensitivity: 1,
+            releaseOnEdges: false,
           }"
-          :threshold="12"
-          :long-swipes-ratio="0.4"
-          :long-swipes-ms="420"
+          :no-swiping="true"
+          no-swiping-class="no-swipe-scroll"
           @swiper="onSwiper"
           @touch-start="onSwiperTouchStart"
           @slide-change="onSlideChange"
@@ -129,7 +125,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { Swiper, SwiperSlide } from 'swiper/vue'
-import { FreeMode } from 'swiper/modules'
+import { FreeMode, Mousewheel } from 'swiper/modules'
 import 'swiper/css'
 import 'swiper/css/free-mode'
 import { useSession } from '../composables/useSession.js'
@@ -453,24 +449,37 @@ function onSkip() {
 .session-content :deep(.card) {
   width: 100%;
   max-width: 100%;
-  min-height: min(560px, 80vh);
+  height: 100%;
+  min-height: 0;
   padding: calc(var(--sp) * 1.1);
   margin: 0 auto;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 .session-content :deep(.definition-text) {
-  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
-  overflow: hidden; line-height: 1.5;
+  line-height: 1.5;
 }
 .session-content :deep(.stage3-sentence) {
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-  overflow: hidden; line-height: 1.5;
+  line-height: 1.5;
+}
+.session-content :deep(.no-swipe-scroll) {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 .session-content :deep(.stage1-root),
 .session-content :deep(.stage2-root),
 .session-content :deep(.stage3-root) {
   width: 100%;
   margin: 0 auto;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Swiper: fixed height prevents jump when switching between tall/short cards */
@@ -496,8 +505,8 @@ function onSkip() {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: stretch;
   overflow: hidden;
 }
 .session-swiper :deep(.slide-inner .card) {

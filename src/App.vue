@@ -2,9 +2,9 @@
   <div class="app-loading" v-if="loading">Loading words…</div>
   <div class="app" :class="{ 'session-active': screen === 'session' }" v-else>
     <!-- HEADER: hide nav on session (stats in card) -->
-    <div class="header">
+    <div v-if="screen !== 'session'" class="header">
       <div class="logo">LexiCore <span>v2.0</span></div>
-      <div v-if="screen !== 'session'" class="header-btns">
+      <div class="header-btns">
         <button class="icon-btn" @click="goTo('words')" title="Word List">📚</button>
         <button class="icon-btn" @click="goTo('settings')" title="Settings">⚙️</button>
       </div>

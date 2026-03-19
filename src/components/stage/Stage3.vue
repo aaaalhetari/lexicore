@@ -41,7 +41,7 @@
         <button class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
       </div>
       <div class="definition-label">Is it right or wrong?</div>
-      <div class="stage3-sentence" v-html="displaySentence"></div>
+      <div class="stage3-sentence no-swipe-scroll" v-html="displaySentence"></div>
       <div class="tap-zones">
         <div
           class="tap-zone tap-wrong"
@@ -64,7 +64,7 @@
       </div>
       <div class="swipe-hint">← tap ✗ &nbsp;|&nbsp; tap ✓ →</div>
       <div v-if="feedback" class="stage3-explanation-block">
-        <div v-if="stage3Explanation" class="explanation-text">{{ stage3Explanation }}</div>
+        <div v-if="stage3Explanation" class="explanation-text no-swipe-scroll">{{ stage3Explanation }}</div>
         <button
           v-if="!stage3ExplanationLoading"
           class="btn-ai-explain"
@@ -227,6 +227,9 @@ function answer(val) {
   color: var(--text);
   margin: 0 0 8px;
   font-weight: 400;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .stage3-root .card { position: relative; }
 .card-action {
@@ -301,6 +304,7 @@ function answer(val) {
   border-top: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.04);
   border-radius: var(--radius-sm);
+  min-height: 0;
 }
 .explanation-text {
   font-size: 1.05rem;
@@ -308,6 +312,10 @@ function answer(val) {
   color: var(--text);
   margin-bottom: 12px;
   font-weight: 450;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-height: min(30vh, 100%);
 }
 .btn-ai-explain {
   background: var(--surface2);
@@ -335,6 +343,7 @@ function answer(val) {
   touch-action: pan-x;
   border: 1px solid var(--border);
   transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
+  min-height: 0;
 }
 .card-stats { flex-shrink: 0; width: 100%; }
 .card-toolbar {
@@ -374,7 +383,7 @@ function answer(val) {
 .stage3-root {
   display: flex; flex-direction: column; min-height: 0;
 }
-.stage3-root .card { flex-shrink: 0; }
+.stage3-root .card { flex: 1; min-height: 0; }
 .card.placeholder-only {
   display: flex;
   flex-direction: column;
