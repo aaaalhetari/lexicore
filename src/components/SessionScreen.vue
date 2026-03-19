@@ -56,23 +56,18 @@
           class="session-swiper"
           direction="vertical"
           :slides-per-view="1"
+          :slides-per-group="1"
           :space-between="16"
           :initial-slide="displayIndex"
-          :speed="420"
-          :touch-ratio="0.92"
+          :speed="520"
+          :touch-ratio="0.88"
           :short-swipes="true"
-          :free-mode="{
-            enabled: true,
-            sticky: true,
-            momentum: true,
-            momentumBounce: false,
-            momentumRatio: 0.9,
-            momentumVelocityRatio: 1.05,
-            minimumVelocity: 0.24,
-          }"
-          :threshold="6"
-          :long-swipes-ratio="0.23"
-          :long-swipes-ms="230"
+          :long-swipes="true"
+          :long-swipes-ratio="0.45"
+          :long-swipes-ms="260"
+          :threshold="7"
+          :resistance-ratio="0.78"
+          :free-mode="false"
           @swiper="onSwiper"
           @touch-start="onSwiperTouchStart"
           @slide-change="onSlideChange"
