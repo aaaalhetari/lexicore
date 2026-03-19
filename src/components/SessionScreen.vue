@@ -58,19 +58,18 @@
           :slides-per-view="1"
           :space-between="16"
           :initial-slide="displayIndex"
-          :speed="400"
+          :speed="560"
+          :touch-ratio="0.55"
           :free-mode="{
             enabled: true,
             sticky: true,
-            momentum: true,
+            momentum: false,
             momentumBounce: false,
-            momentumRatio: 1.02,
-            momentumVelocityRatio: 0.95,
-            minimumVelocity: 0.35,
+            minimumVelocity: 0.55,
           }"
-          :threshold="10"
-          :long-swipes-ratio="0.35"
-          :long-swipes-ms="300"
+          :threshold="14"
+          :long-swipes-ratio="0.5"
+          :long-swipes-ms="380"
           @swiper="onSwiper"
           @touch-start="onSwiperTouchStart"
           @slide-change="onSlideChange"
