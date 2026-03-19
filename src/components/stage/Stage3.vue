@@ -335,7 +335,6 @@ function answer(val) {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  touch-action: pan-x;
   border: 1px solid var(--border);
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   min-height: 0;

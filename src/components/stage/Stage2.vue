@@ -332,7 +332,6 @@ function answer(val) {
   border: 2px solid var(--red) !important;
   box-shadow: 0 0 24px rgba(224, 92, 92, 0.12);
 }
-.swipe-card { touch-action: pan-x; }
 .card-stats { flex-shrink: 0; width: 100%; }
 .stage2-root {
   display: flex; flex-direction: column; min-height: 0;
