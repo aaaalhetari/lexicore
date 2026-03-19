@@ -49,7 +49,7 @@
 
     <!-- ACTIVE QUESTION - Swiper owns the full carousel -->
     <div v-else-if="phase === 'question' && currentWord" class="session-question-wrap">
-      <div class="session-content" @wheel.capture="onSessionWheel">
+      <div class="session-content" @wheel.capture="onSessionWheel" @touchstart.capture="onSessionTouchStart" @touchmove.capture="onSessionTouchMove">
         <!-- Vertical one-card navigation; long text uses .no-swipe-scroll areas -->
         <Swiper
           :key="'swiper-' + displayOrder.length"
@@ -67,8 +67,6 @@
             sensitivity: 1,
             releaseOnEdges: false,
           }"
-          :no-swiping="true"
-          no-swiping-class="no-swipe-scroll"
           @swiper="onSwiper"
           @touch-start="onSwiperTouchStart"
           @slide-change="onSlideChange"
@@ -162,6 +160,7 @@ const s3UseCorrect = ref(true)
 const errorMessage = ref('')
 const currentUser = ref(null)
 const learningTargetIndex = ref(0)
+const touchScrollState = ref({ scrollBox: null, startY: 0, startScrollTop: 0 })
 
 const stats = computed(() => getStats())
 const masteredCount = computed(() => getData().words.filter(w => w.status === 'mastered').length)
@@ -204,6 +203,43 @@ function onSwiper(swiper) {
 
 function onSwiperTouchStart() {
   if (feedback.value) sessionAudio.stopAudio()
+}
+
+function onSessionTouchStart(e) {
+  const target = e?.target
+  if (!(target instanceof Element)) return
+  const scrollBox = target.closest('.no-swipe-scroll')
+  if (!scrollBox) {
+    touchScrollState.value = { scrollBox: null, startY: 0, startScrollTop: 0 }
+    return
+  }
+  const t = e.touches?.[0]
+  if (!t) return
+  touchScrollState.value = {
+    scrollBox,
+    startY: t.clientY,
+    startScrollTop: scrollBox.scrollTop,
+  }
+}
+
+function onSessionTouchMove(e) {
+  const state = touchScrollState.value
+  const scrollBox = state.scrollBox
+  if (!scrollBox || !e.touches?.[0]) return
+  const scrollHeight = scrollBox.scrollHeight
+  const clientHeight = scrollBox.clientHeight
+  const canScroll = scrollHeight - clientHeight > 1
+  if (!canScroll) return
+  const deltaY = e.touches[0].clientY - state.startY
+  const atTop = scrollBox.scrollTop <= 0
+  const atBottom = scrollBox.scrollTop + clientHeight >= scrollHeight - 1
+  const swipingUp = deltaY < 0
+  const swipingDown = deltaY > 0
+  const atBoundaryAndSwipingOut = (atTop && swipingDown) || (atBottom && swipingUp)
+  if (atBoundaryAndSwipingOut) return
+  scrollBox.scrollTop = Math.max(0, Math.min(scrollHeight - clientHeight, state.startScrollTop + deltaY))
+  e.preventDefault()
+  e.stopPropagation()
 }
 
 function onSessionWheel(event) {
@@ -450,7 +486,6 @@ function onSkip() {
   pointer-events: auto;
   scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
   touch-action: pan-y;
 }
 .session-content :deep(.card-header) {
