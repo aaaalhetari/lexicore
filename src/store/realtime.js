@@ -14,6 +14,10 @@ const state = reactive({
 })
 
 let channel = null
+let currentUserId = null
+let resyncTimer = null
+let visibilityHandler = null
+let onlineHandler = null
 
 /** Normalize id for comparison (handles bigint/string/number from DB) */
 function sameId(a, b) {
@@ -78,21 +82,7 @@ export function isReady() {
   return state.ready
 }
 
-/** Subscribe to vocabulary + load initial data */
-export async function subscribeRealtime(userId) {
-  if (!hasSupabase() || !userId) {
-    state.settings = {
-      new_words_per_session: 50,
-      new_words_per_day: 25,
-      waiting_target: 50,
-      cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
-      cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
-      cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
-    }
-    state.ready = true
-    return
-  }
-
+async function fetchVocabulary(userId) {
   const { data: initial, error: vocabError } = await supabase
     .from('vocabulary')
     .select('*')
@@ -102,19 +92,22 @@ export async function subscribeRealtime(userId) {
   if (vocabError) {
     console.warn('Vocabulary fetch failed:', vocabError)
     state.words = []
-  } else {
-    const seen = new Set()
-    state.words = (initial ?? [])
-      .map(normalizeWord)
-      .filter((w) => {
-        const key = String(w.id ?? '')
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
-      })
-      .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
+    return
   }
 
+  const seen = new Set()
+  state.words = (initial ?? [])
+    .map(normalizeWord)
+    .filter((w) => {
+      const key = String(w.id ?? '')
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
+}
+
+async function fetchSettings(userId) {
   const { data: settingsRow } = await supabase
     .from('user_settings')
     .select('*')
@@ -138,7 +131,9 @@ export async function subscribeRealtime(userId) {
         cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
         cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       }
+}
 
+async function fetchSessions(userId) {
   const { data: sessionsData } = await supabase
     .from('sessions')
     .select('*')
@@ -147,10 +142,71 @@ export async function subscribeRealtime(userId) {
     .limit(365)
 
   state.sessions = sessionsData ?? []
+}
+
+async function resyncCurrentUser() {
+  const userId = currentUserId
+  if (!hasSupabase() || !userId) return
+  try {
+    await Promise.all([
+      fetchVocabulary(userId),
+      fetchSettings(userId),
+      fetchSessions(userId),
+    ])
+  } catch (e) {
+    console.warn('Realtime resync failed:', e?.message ?? e)
+  }
+}
+
+function scheduleQuickResync(delay = 250) {
+  if (resyncTimer) clearTimeout(resyncTimer)
+  resyncTimer = setTimeout(() => {
+    resyncTimer = null
+    resyncCurrentUser()
+  }, delay)
+}
+
+function wireFastResyncHooks() {
+  if (typeof document !== 'undefined' && !visibilityHandler) {
+    visibilityHandler = () => {
+      if (document.visibilityState === 'visible') scheduleQuickResync(0)
+    }
+    document.addEventListener('visibilitychange', visibilityHandler)
+  }
+  if (typeof window !== 'undefined' && !onlineHandler) {
+    onlineHandler = () => scheduleQuickResync(0)
+    window.addEventListener('online', onlineHandler)
+  }
+}
+
+/** Subscribe to vocabulary + load initial data */
+export async function subscribeRealtime(userId) {
+  unsubscribeRealtime()
+  currentUserId = userId ?? null
+
+  if (!hasSupabase() || !userId) {
+    state.settings = {
+      new_words_per_session: 50,
+      new_words_per_day: 25,
+      waiting_target: 50,
+      cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
+      cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
+      cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
+    }
+    state.ready = true
+    return
+  }
+
+  await Promise.all([
+    fetchVocabulary(userId),
+    fetchSettings(userId),
+    fetchSessions(userId),
+  ])
   state.ready = true
+  wireFastResyncHooks()
 
   channel = supabase
-    .channel('vocabulary-changes')
+    .channel(`realtime-user-${userId}`)
     .on(
       'postgres_changes',
       {
@@ -163,7 +219,36 @@ export async function subscribeRealtime(userId) {
         handleVocabularyChange(payload)
       }
     )
-    .subscribe()
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'user_settings',
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => {
+        handleSettingsChange(payload)
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'sessions',
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => {
+        handleSessionsChange(payload)
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') scheduleQuickResync(0)
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        scheduleQuickResync(600)
+      }
+    })
 }
 
 function handleVocabularyChange(payload) {
@@ -185,6 +270,38 @@ function handleVocabularyChange(payload) {
     }
   } else if (eventType === 'DELETE') {
     state.words = state.words.filter((w) => !sameId(w.id, oldRow.id))
+  }
+  // Debounced full refresh keeps client fully in-sync with any server-side triggers.
+  scheduleQuickResync(450)
+}
+
+function handleSettingsChange(payload) {
+  const { eventType, new: newRow } = payload
+  if (eventType === 'DELETE' || !newRow) return
+  state.settings = {
+    new_words_per_session: newRow.new_words_per_session ?? 50,
+    new_words_per_day: newRow.new_words_per_day ?? 25,
+    waiting_target: newRow.waiting_target ?? 50,
+    cycle_1: newRow.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
+    cycle_2: newRow.cycle_2 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
+    cycle_3: newRow.cycle_3 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
+  }
+}
+
+function handleSessionsChange(payload) {
+  const { eventType, new: newRow, old: oldRow } = payload
+  if (eventType === 'INSERT' || eventType === 'UPDATE') {
+    const idx = state.sessions.findIndex((s) => sameId(s.id, newRow.id))
+    if (idx >= 0) {
+      state.sessions.splice(idx, 1, newRow)
+    } else {
+      state.sessions.push(newRow)
+    }
+    state.sessions = [...state.sessions]
+      .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
+      .slice(0, 365)
+  } else if (eventType === 'DELETE') {
+    state.sessions = state.sessions.filter((s) => !sameId(s.id, oldRow.id))
   }
 }
 
@@ -252,10 +369,23 @@ function getCurrentS3Wrong(row) {
 }
 
 export function unsubscribeRealtime() {
+  if (resyncTimer) {
+    clearTimeout(resyncTimer)
+    resyncTimer = null
+  }
   if (channel) {
     supabase.removeChannel(channel)
     channel = null
   }
+  if (visibilityHandler && typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', visibilityHandler)
+    visibilityHandler = null
+  }
+  if (onlineHandler && typeof window !== 'undefined') {
+    window.removeEventListener('online', onlineHandler)
+    onlineHandler = null
+  }
+  currentUserId = null
 }
 
 /** Refetch a single word and update store (call after makeFullCard) */

@@ -42,7 +42,7 @@
       </div>
       <div class="definition-label">Put the word in the sentence</div>
       <div
-        class="sentence-text"
+        class="sentence-text no-swipe-scroll"
         :class="{ revealed, tappable: !revealed }"
         @click="onSentenceClick"
       >
