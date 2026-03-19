@@ -17,19 +17,18 @@
       class="card swipe-card"
       :class="{ 'feedback-correct': feedback?.type === 'correct', 'feedback-wrong': feedback?.type === 'wrong' }"
     >
-      <div v-if="sessionStats" class="card-stats">
-        <SessionStatsBar :stats="sessionStats" />
+      <div class="card-header">
+        <SessionStatsBar v-if="sessionStats" :stats="sessionStats" />
+        <StageCardToolbar
+          :generating="generating"
+          :is-muted="isMuted"
+          :show-exit="!!sessionStats"
+          @generate="onMakeFullCard"
+          @play="onPlayClick"
+          @mute="toggleMute"
+          @exit="sessionStats?.onClose?.()"
+        />
       </div>
-      <StageCardToolbar
-        :generating="generating"
-        :is-muted="isMuted"
-        :show-exit="!!sessionStats"
-        @generate="onMakeFullCard"
-        @play="onPlayClick"
-        @mute="toggleMute"
-        @exit="sessionStats?.onClose?.()"
-      />
-      <div class="definition-label">Is it right or wrong?</div>
       <div class="stage3-sentence no-swipe-scroll" v-html="displaySentence"></div>
       <div class="tap-zones">
         <div
@@ -339,7 +338,6 @@ function answer(val) {
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   min-height: 0;
 }
-.card-stats { flex-shrink: 0; width: 100%; }
 .swipe-card.feedback-correct {
   background: linear-gradient(160deg, rgba(76, 175, 130, 0.18), rgba(76, 175, 130, 0.06) 60%) !important;
   border: 2px solid var(--green) !important;

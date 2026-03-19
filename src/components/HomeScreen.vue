@@ -32,6 +32,13 @@
           </div>
         </div>
         <div class="ks-row">
+          <div class="ks-icon">📋</div>
+          <div class="ks-info">
+            <div class="ks-num">{{ stats.eligibleToday ?? 0 }}</div>
+            <div class="ks-label">Remaining</div>
+          </div>
+        </div>
+        <div class="ks-row">
           <div class="ks-icon">🏆</div>
           <div class="ks-info">
             <div class="ks-num">{{ stats.mastered ?? 0 }}</div>

@@ -453,6 +453,14 @@ function onSkip() {
   overscroll-behavior: contain;
   touch-action: pan-y;
 }
+.session-content :deep(.card-header) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
 .session-content :deep(.stage1-root),
 .session-content :deep(.stage2-root),
 .session-content :deep(.stage3-root) {

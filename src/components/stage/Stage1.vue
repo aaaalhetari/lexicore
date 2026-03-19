@@ -17,19 +17,18 @@
       :class="{ 'feedback-correct': feedback?.type === 'correct', 'feedback-wrong': feedback?.type === 'wrong' }"
       @click="onCardTap"
     >
-      <div v-if="sessionStats" class="card-stats">
-        <SessionStatsBar :stats="sessionStats" />
+      <div class="card-header">
+        <SessionStatsBar v-if="sessionStats" :stats="sessionStats" />
+        <StageCardToolbar
+          :generating="generating"
+          :is-muted="isMuted"
+          :show-exit="!!sessionStats"
+          @generate="onMakeFullCard"
+          @play="onPlayClick"
+          @mute="toggleMute"
+          @exit="sessionStats?.onClose?.()"
+        />
       </div>
-      <StageCardToolbar
-        :generating="generating"
-        :is-muted="isMuted"
-        :show-exit="!!sessionStats"
-        @generate="onMakeFullCard"
-        @play="onPlayClick"
-        @mute="toggleMute"
-        @exit="sessionStats?.onClose?.()"
-      />
-      <div class="definition-label">Choose the right definition</div>
       <div class="word-display">{{ word?.word }}</div>
       <div class="choices-defs no-swipe-scroll">
         <button
@@ -184,10 +183,6 @@ function answer(index) {
   border: 1px solid var(--border);
   transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   min-height: 0;
-}
-.card-stats {
-  flex-shrink: 0;
-  width: 100%;
 }
 .unified-card.feedback-correct {
   background: linear-gradient(160deg, rgba(76, 175, 130, 0.18), rgba(76, 175, 130, 0.06) 60%) !important;

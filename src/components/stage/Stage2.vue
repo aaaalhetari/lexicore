@@ -17,19 +17,18 @@
       class="card swipe-card"
       :class="{ 'feedback-correct': feedback?.type === 'correct', 'feedback-wrong': feedback?.type === 'wrong' }"
     >
-      <div v-if="sessionStats" class="card-stats">
-        <SessionStatsBar :stats="sessionStats" />
+      <div class="card-header">
+        <SessionStatsBar v-if="sessionStats" :stats="sessionStats" />
+        <StageCardToolbar
+          :generating="generating"
+          :is-muted="isMuted"
+          :show-exit="!!sessionStats"
+          @generate="onMakeFullCard"
+          @play="onPlayClick"
+          @mute="toggleMute"
+          @exit="sessionStats?.onClose?.()"
+        />
       </div>
-      <StageCardToolbar
-        :generating="generating"
-        :is-muted="isMuted"
-        :show-exit="!!sessionStats"
-        @generate="onMakeFullCard"
-        @play="onPlayClick"
-        @mute="toggleMute"
-        @exit="sessionStats?.onClose?.()"
-      />
-      <div class="definition-label">Put the word in the sentence</div>
       <div
         class="sentence-text no-swipe-scroll"
         :class="{ revealed, tappable: !revealed }"
@@ -332,7 +331,6 @@ function answer(val) {
   border: 2px solid var(--red) !important;
   box-shadow: 0 0 24px rgba(224, 92, 92, 0.12);
 }
-.card-stats { flex-shrink: 0; width: 100%; }
 .stage2-root {
   display: flex; flex-direction: column; min-height: 0;
 }

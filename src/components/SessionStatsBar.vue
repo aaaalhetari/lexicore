@@ -1,22 +1,6 @@
 <template>
   <div v-if="stats" class="session-stats-bar">
     <div class="stats-row">
-      <div class="stat-item" :title="t.remainingTip">
-        <span class="stat-lbl">{{ t.remaining }}</span>
-        <b>{{ stats.remaining }}</b>
-      </div>
-      <div class="stat-item correct" :title="t.correctTip">
-        <span class="stat-lbl">✓</span>
-        <b>{{ stats.correct }}</b>
-      </div>
-      <div class="stat-item wrong" :title="t.wrongTip">
-        <span class="stat-lbl">✗</span>
-        <b>{{ stats.wrong }}</b>
-      </div>
-      <div class="stat-item" :title="t.accuracyTip">
-        <span class="stat-lbl">{{ t.accuracy }}</span>
-        <b>{{ stats.accuracyPct }}%</b>
-      </div>
       <div class="stat-item stat-cycles" :title="t.cycleTip">
         <span class="stat-lbl">{{ t.cycle }}</span>
         <div class="cycle-dots">
@@ -29,9 +13,11 @@
           <span v-for="s in 3" :key="'s'+s" class="dot" :class="{ active: stats.stage === s }">{{ s === 1 ? 'D' : s === 2 ? 'S' : 'U' }}</span>
         </div>
       </div>
-      <div class="stat-item" :title="t.progressTip">
+      <div class="stat-item stat-progress" :title="t.progressTip">
         <span class="stat-lbl">{{ t.progress }}</span>
-        <b>{{ stats.displayCount }}/{{ stats.displayRequired }}</b>
+        <div class="progress-dots">
+          <span v-for="i in Math.max(1, stats.displayRequired ?? 4)" :key="'p'+i" class="dot" :class="{ active: i <= (stats.displayCount ?? 0) }">{{ i }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -47,12 +33,6 @@ const effectiveLang = computed(() => props.lang || locale)
 const t = computed(() => {
   const ar = effectiveLang.value?.startsWith('ar')
   return ar ? {
-    remaining: 'متبقي',
-    remainingTip: 'كلمات متبقية في هذه الجلسة',
-    correctTip: 'إجابات صحيحة في هذه الجلسة',
-    wrongTip: 'إجابات خاطئة في هذه الجلسة',
-    accuracy: 'الدقة',
-    accuracyTip: 'نسبة الإجابات الصحيحة',
     cycle: 'الدورة',
     cycleTip: 'دورة التعلم: 1=أولى، 2=ثانية، 3=ثالثة',
     stage: 'المرحلة',
@@ -60,12 +40,6 @@ const t = computed(() => {
     progress: 'التقدم',
     progressTip: 'إجابات صحيحة مطلوبة للتقدم (مثلاً 2/4 = 2 من 4)',
   } : {
-    remaining: 'Remaining',
-    remainingTip: 'Words left in this session',
-    correctTip: 'Correct answers in this session',
-    wrongTip: 'Wrong answers in this session',
-    accuracy: 'Accuracy',
-    accuracyTip: 'Percentage of correct answers',
     cycle: 'Cycle',
     cycleTip: 'Learning cycle: 1=first pass, 2=second, 3=third',
     stage: 'Stage',
@@ -79,11 +53,11 @@ const t = computed(() => {
 <style scoped>
 .session-stats-bar {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px 0 10px;
+  flex-direction: row;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
   font-size: 0.7rem;
-  width: 100%;
 }
 .stats-row {
   display: flex;
@@ -99,21 +73,14 @@ const t = computed(() => {
   gap: 2px;
   color: var(--text2);
 }
-.stat-item b {
-  font-weight: 600;
-  color: var(--text);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.78rem;
-}
-.stat-item.correct b { color: var(--green); }
-.stat-item.wrong b { color: var(--red); }
+.stat-item b { font-weight: 600; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
 .stat-lbl {
   font-size: 0.58rem;
   color: var(--text3);
   text-transform: uppercase;
   letter-spacing: 0.6px;
 }
-.cycle-dots, .stage-dots {
+.cycle-dots, .stage-dots, .progress-dots {
   display: flex;
   align-items: center;
   gap: 3px;
