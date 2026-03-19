@@ -1,5 +1,5 @@
-// LexiCore: AI Content Generation (Claude 3.5 Sonnet)
-// Generates stage-specific content for vocabulary words
+// LexiCore: Card content generation (Claude)
+// Stage 1: definitions | Stage 2: gap-fill sentences | Stage 3: correct/incorrect usage
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
@@ -24,20 +24,20 @@ async function invokeGenerateAllTTS(
   word: string
 ) {
   try {
-    await supabase.from("refill_jobs").insert({
+    await supabase.from("card_jobs").insert({
       user_id: userId,
-      job_type: "tts_content",
+      job_type: "add_card_sound",
       payload: { word_id: wordId, word },
     })
   } catch (e) {
-    console.warn("tts_content job insert skipped:", e)
+    console.warn("add_card_sound job insert skipped:", e)
   }
 }
 
 /** Invoke generate-all-tts-for-word and await — couples audio with text in same flow */
 async function invokeGenerateAllTTSAndWait(userId: string, wordId: number, word: string): Promise<void> {
   try {
-    const res = await fetch(`${FUNCTIONS_URL}/generate-all-tts-for-word`, {
+    const res = await fetch(`${FUNCTIONS_URL}/add-card-sound`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -47,19 +47,21 @@ async function invokeGenerateAllTTSAndWait(userId: string, wordId: number, word:
     })
     if (!res.ok) {
       const text = await res.text()
-      console.warn("generate-all-tts-for-word failed:", text)
+      console.warn("add-card-sound failed:", text)
     }
   } catch (e) {
-    console.warn("generate-all-tts-for-word invoke error:", e)
+    console.warn("add-card-sound invoke error:", e)
   }
 }
 
+/** Request body: job_type (B1-friendly)
+ * add_more_words | make_card_content | make_full_card | explain_sentence */
 interface GenerateRequest {
   user_id: string
-  job_type: "reservoir" | "stage_content" | "explain_sentence"
+  job_type: "add_more_words" | "make_card_content" | "make_full_card" | "explain_sentence"
   word_id?: number
   word?: string
-  stage?: 1 | 2 | 3
+  stage?: 1 | 2 | 3 // 1=definition, 2=gap-fill, 3=usage judgment
   count?: number
   sentence?: string
   is_correct?: boolean
@@ -89,6 +91,7 @@ async function generateWithClaude(
   return data.content?.[0]?.text ?? ""
 }
 
+/** Stage 1: Definition — multiple choice */
 async function generateStage1Definitions(word: string): Promise<{ definition: string; is_correct: boolean }[]> {
   const system = `You are a vocabulary learning content generator. Output valid JSON only, no markdown.`
   const prompt = `Generate 5 multiple-choice definitions for the English word "${word}".
@@ -100,6 +103,7 @@ Exactly ONE must have "is_correct":true (the real definition). The rest are plau
   return JSON.parse(match[0])
 }
 
+/** Stage 2: Gap-fill — sentences with ___ */
 async function generateStage2Sentences(word: string): Promise<{ sentence: string; meaning: string }[]> {
   const system = `You are a vocabulary learning content generator. Output valid JSON only, no markdown.`
   const prompt = `Generate 5 gap-fill example sentences for the English word "${word}".
@@ -111,6 +115,7 @@ Return a JSON array: [{"sentence":"...","meaning":"..."}]`
   return JSON.parse(match[0])
 }
 
+/** Stage 3: Usage judgment — correct vs incorrect sentences */
 async function generateStage3Sentences(word: string): Promise<{
   correct: string[]
   incorrect: string[]
@@ -173,8 +178,8 @@ Deno.serve(async (req) => {
       )
     }
 
-    if (job_type === "reservoir") {
-      // Refill waiting reservoir with new words — only when waiting < reservoir
+    if (job_type === "add_more_words") {
+      // Expand waiting pool — only when waiting < reservoir
       const { count: waitingCount } = await supabase
         .from("vocabulary")
         .select("*", { count: "exact", head: true })
@@ -183,11 +188,11 @@ Deno.serve(async (req) => {
 
       const { data: settings } = await supabase
         .from("user_settings")
-        .select("reservoir")
+        .select("waiting_target")
         .eq("user_id", user_id)
         .single()
 
-      const reservoir = settings?.reservoir ?? 50
+      const reservoir = settings?.waiting_target ?? 50
       const waiting = waitingCount ?? 0
       if (waiting >= reservoir) {
         return new Response(
@@ -249,8 +254,44 @@ Deno.serve(async (req) => {
       )
     }
 
-    if (job_type === "stage_content" && word_id && word && stage) {
-      // Refill content for a specific stage
+    if (job_type === "make_full_card" && word_id && word) {
+      // Full card: all stages content + audio once (card button)
+      const { data: vocab } = await supabase
+        .from("vocabulary")
+        .select("id")
+        .eq("id", word_id)
+        .eq("user_id", user_id)
+        .single()
+
+      if (!vocab) throw new Error("Word not found")
+
+      const defs = await generateStage1Definitions(word)
+      const s2 = await generateStage2Sentences(word)
+      const s3 = await generateStage3Sentences(word)
+
+      await supabase
+        .from("vocabulary")
+        .update({
+          stage1_definitions: defs,
+          stage2_sentences: s2,
+          stage3_correct: s3.correct,
+          stage3_incorrect: s3.incorrect,
+          stage3_explanations_correct: [],
+          stage3_explanations_incorrect: [],
+        })
+        .eq("id", word_id)
+        .eq("user_id", user_id)
+
+      await invokeGenerateAllTTSAndWait(user_id, word_id, word)
+
+      return new Response(
+        JSON.stringify({ updated: true, audio: true }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    if (job_type === "make_card_content" && word_id && word && stage) {
+      // Card stage content: 1=definitions, 2=gap-fill, 3=correct/incorrect (used by process-refill)
       const { data: vocab } = await supabase
         .from("vocabulary")
         .select("*")
@@ -262,7 +303,6 @@ Deno.serve(async (req) => {
 
       let updates: Record<string, unknown> = {}
 
-      // Replace (not append) to avoid keeping placeholder content
       if (stage === 1) {
         const defs = await generateStage1Definitions(word)
         updates.stage1_definitions = defs
@@ -273,7 +313,6 @@ Deno.serve(async (req) => {
         const s3 = await generateStage3Sentences(word)
         updates.stage3_correct = s3.correct
         updates.stage3_incorrect = s3.incorrect
-        // stage3_explanations: تولّد من البطاقة عند الحاجة فقط
       }
 
       await supabase.from("vocabulary").update(updates).eq("id", word_id).eq("user_id", user_id)

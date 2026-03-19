@@ -1,5 +1,6 @@
-// LexiCore: Process refill jobs (reservoir, stage_content, tts_content)
-// Invoked by cron or manually to drain refill_jobs
+// LexiCore: Process card generation jobs
+// Job types: add_more_words | make_card_content | add_card_sound
+// Invoked by: auto-add-cards
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
@@ -38,32 +39,31 @@ Deno.serve(async (req) => {
     }
 
     // Reset jobs stuck in "processing" (from timed-out runs)
-    await supabase.from("refill_jobs").update({ status: "pending" }).eq("status", "processing")
+    await supabase.from("card_jobs").update({ status: "pending" }).eq("status", "processing")
 
     // Retry failed jobs after 1 hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
     await supabase
-      .from("refill_jobs")
+      .from("card_jobs")
       .update({ status: "pending" })
       .eq("status", "failed")
       .lt("processed_at", oneHourAgo)
 
-    // When user_id provided: reservoir first (if any), then tts_content for this user
-    // Otherwise: tts_content > stage_content > reservoir
+    // Priority: user_id ? (add_more_words, add_card_sound) : (add_card_sound, make_card_content, add_more_words)
     let jobs: { id: number; user_id: string; job_type: string; payload: Record<string, unknown> }[] = []
     if (userId) {
       const { data: userReservoir } = await supabase
-        .from("refill_jobs")
+        .from("card_jobs")
         .select("*")
         .eq("status", "pending")
-        .eq("job_type", "reservoir")
+        .eq("job_type", "add_more_words")
         .eq("user_id", userId)
         .limit(1)
       const { data: userTts } = await supabase
-        .from("refill_jobs")
+        .from("card_jobs")
         .select("*")
         .eq("status", "pending")
-        .eq("job_type", "tts_content")
+        .eq("job_type", "add_card_sound")
         .eq("user_id", userId)
         .limit(5)
       jobs = [...(userReservoir ?? []), ...(userTts ?? [])].slice(0, 6)
@@ -71,16 +71,16 @@ Deno.serve(async (req) => {
 
     if (!jobs.length) {
       const { data: ttsJobs } = await supabase
-        .from("refill_jobs")
+        .from("card_jobs")
         .select("*")
         .eq("status", "pending")
-        .eq("job_type", "tts_content")
+        .eq("job_type", "add_card_sound")
         .limit(4)
       const { data: otherJobs } = await supabase
-        .from("refill_jobs")
+        .from("card_jobs")
         .select("*")
         .eq("status", "pending")
-        .neq("job_type", "tts_content")
+        .neq("job_type", "add_card_sound")
         .order("job_type", { ascending: true })
         .limit(4)
       jobs = [...(ttsJobs ?? []), ...(otherJobs ?? [])].slice(0, 6)
@@ -96,44 +96,44 @@ Deno.serve(async (req) => {
     let processed = 0
     for (const job of jobs) {
       await supabase
-        .from("refill_jobs")
+        .from("card_jobs")
         .update({ status: "processing" })
         .eq("id", job.id)
 
       try {
-        if (job.job_type === "reservoir") {
-          await invokeFunction("generate-content", {
+        if (job.job_type === "add_more_words") {
+          await invokeFunction("make-card-content", {
             user_id: job.user_id,
-            job_type: "reservoir",
+            job_type: "add_more_words",
             count: job.payload?.count ?? 20,
           })
-        } else if (job.job_type === "stage_content") {
-          await invokeFunction("generate-content", {
+        } else if (job.job_type === "make_card_content") {
+          await invokeFunction("make-card-content", {
             user_id: job.user_id,
-            job_type: "stage_content",
+            job_type: "make_card_content",
             word_id: job.payload?.word_id,
             word: job.payload?.word,
             stage: job.payload?.stage,
           })
-        } else if (job.job_type === "tts_content") {
-          await invokeFunction("generate-all-tts-for-word", {
+        } else if (job.job_type === "add_card_sound") {
+          await invokeFunction("add-card-sound", {
             user_id: job.user_id,
             word_id: job.payload?.word_id,
             word: job.payload?.word,
           })
         } else {
-          throw new Error(`Unknown job_type: ${job.job_type}`)
+          throw new Error(`Unknown job_type (expected add_more_words|make_card_content|add_card_sound): ${job.job_type}`)
         }
 
         await supabase
-          .from("refill_jobs")
+          .from("card_jobs")
           .update({ status: "done", processed_at: new Date().toISOString() })
           .eq("id", job.id)
         processed++
       } catch (e) {
         console.error("Job failed:", job.id, e)
         await supabase
-          .from("refill_jobs")
+          .from("card_jobs")
           .update({ status: "failed", processed_at: new Date().toISOString() })
           .eq("id", job.id)
       }

@@ -21,22 +21,22 @@
         </div>
       </div>
       <div class="settings-section">
-        <h3>Reservoir</h3>
+        <h3>Waiting target</h3>
         <div class="setting-row">
           <div>
             <div class="setting-label">New words per day</div>
-            <div class="setting-desc">Words to study today. Bounded by [learning today, reservoir]. Reducing moves excess new_word → waiting.</div>
+            <div class="setting-desc">Words to study today. Bounded by [learning today, waiting target]. Reducing moves excess new_word → waiting.</div>
             <div class="setting-counter">Home shows: <strong>New words {{ stats.newWord ?? 0 }}</strong> of <strong>{{ local.new_words_per_day ?? 25 }}</strong>/day · Learning today: {{ stats.newWordsInLearningToday ?? 0 }} (min)</div>
           </div>
           <input class="setting-input" type="number" :min="minNewWordsPerDay" :max="maxNewWordsPerDay" v-model.number="local.new_words_per_day" placeholder="25">
         </div>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Reservoir (Waiting buffer)</div>
-            <div class="setting-desc">Pre-generated words ready for study. Target shown as "X of Y target" on home. When waiting &lt; reservoir, refill adds new words.</div>
-            <div class="setting-counter">Home shows: <strong>Waiting {{ stats.waiting ?? 0 }}</strong> of <strong>{{ local.reservoir ?? 50 }}</strong> target</div>
+            <div class="setting-label">Waiting target</div>
+            <div class="setting-desc">Pre-generated words ready for study. Target shown as "X of Y" on home. When waiting &lt; target, server adds new words.</div>
+            <div class="setting-counter">Home shows: <strong>Waiting {{ stats.waiting ?? 0 }}</strong> of <strong>{{ local.waiting_target ?? 50 }}</strong> target</div>
           </div>
-          <input class="setting-input" type="number" min="10" max="100" v-model.number="local.reservoir" placeholder="50">
+          <input class="setting-input" type="number" min="10" max="100" v-model.number="local.waiting_target" placeholder="50">
         </div>
       </div>
       <div class="settings-section">
@@ -55,15 +55,6 @@
       </div>
       <div class="settings-section">
         <h3>Maintenance</h3>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Process missing audio</div>
-            <div class="setting-desc">Generate audio for words that have content but no sound. Processes pending tts_content jobs.</div>
-          </div>
-          <button class="btn btn-secondary small-btn" :disabled="processingAudio || !user" @click="onProcessAudio">
-            {{ processingAudio ? '⏳ Processing…' : '🔊 Process audio' }}
-          </button>
-        </div>
         <div class="setting-row">
           <div>
             <div class="setting-label">Migrate audio structure</div>
@@ -118,7 +109,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { getSettings, getStats, updateSettings, refreshSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON, migrateAudioStructure, checkRefillNeeded, processRefillJobs } from '../store/data.js'
+import { getSettings, getStats, updateSettings, refreshSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON, migrateAudioStructure } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser, signInWithGitHub, signOut } from '../store/sync.js'
 
@@ -126,36 +117,13 @@ const emit = defineEmits(['back'])
 const tab = ref('general')
 const stats = computed(() => getStats())
 const minNewWordsPerDay = computed(() => Math.max(1, stats.value?.newWordsInLearningToday ?? 0))
-const maxNewWordsPerDay = computed(() => Math.max(minNewWordsPerDay.value, local.reservoir ?? stats.value?.reservoir ?? 50))
+const maxNewWordsPerDay = computed(() => Math.max(minNewWordsPerDay.value, local.waiting_target ?? stats.value?.waiting_target ?? 50))
 const snapshot = ref(null)
 const hasSync = hasSupabase()
 const user = ref(null)
 const authError = ref('')
 const saving = ref(false)
 const migrating = ref(false)
-const processingAudio = ref(false)
-
-async function onProcessAudio() {
-  if (!hasSync || !user.value || processingAudio.value) return
-  processingAudio.value = true
-  let total = 0
-  try {
-    await checkRefillNeeded()
-    for (let i = 0; i < 10; i++) {
-      const r = await processRefillJobs(user.value.id)
-      const n = r?.processed ?? 0
-      total += n
-      if (!n) break
-      await new Promise((x) => setTimeout(x, 800))
-    }
-    if (total > 0) alert(`Processed ${total} jobs. Refresh to see audio.`)
-    else alert('No jobs processed. Check: 1) OPENAI_API_KEY in Supabase Secrets 2) Edge Function logs')
-  } catch (e) {
-    alert('Failed: ' + (e?.message ?? e))
-  } finally {
-    processingAudio.value = false
-  }
-}
 
 async function onMigrateAudio() {
   if (!hasSync || migrating.value) return
@@ -178,7 +146,7 @@ onMounted(async () => {
 const local = reactive({
   new_words_per_session: 50,
   new_words_per_day: 25,
-  reservoir: 50,
+  waiting_target: 50,
   cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
   cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
   cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -190,7 +158,7 @@ onMounted(async () => {
   const s = getSettings()
   local.new_words_per_session = s.new_words_per_session ?? 50
   local.new_words_per_day = s.new_words_per_day ?? 25
-  local.reservoir = s.reservoir ?? 10
+  local.waiting_target = s.waiting_target ?? s.reservoir ?? 10
   for (let c = 1; c <= 3; c++) {
     for (let st = 1; st <= 3; st++) {
       local[`cycle_${c}`][`stage_${st}_required`] = s[`cycle_${c}`][`stage_${st}_required`]
@@ -215,7 +183,7 @@ function cancel() {
   if (restored) {
     local.new_words_per_session = restored.new_words_per_session ?? restored.pool_size ?? 20
     local.new_words_per_day = restored.new_words_per_day ?? 25
-    local.reservoir = restored.reservoir ?? 10
+    local.waiting_target = restored.waiting_target ?? restored.reservoir ?? 10
     for (let c = 1; c <= 3; c++) {
       for (let st = 1; st <= 3; st++) {
         local[`cycle_${c}`][`stage_${st}_required`] = restored[`cycle_${c}`]?.[`stage_${st}_required`]

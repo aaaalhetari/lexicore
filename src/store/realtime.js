@@ -64,10 +64,10 @@ export function getStats() {
     return c1 !== todayStr && c2 !== todayStr && c3 !== todayStr
   }).length
   const sessionLimit = state.settings?.new_words_per_session ?? 50
-  const reservoir = state.settings?.reservoir ?? 50
+  const reservoir = state.settings?.waiting_target ?? 50
   const newWordsPerDay = state.settings?.new_words_per_day ?? 25
   const newWordsInLearningToday = learningToday
-  return { total, mastered, learning, learningToday, learningBeforeToday, newWord, waiting, todayAnswered, eligibleToday, sessionLimit, reservoir, newWordsPerDay, newWordsInLearningToday }
+  return { total, mastered, learning, learningToday, learningBeforeToday, newWord, waiting, todayAnswered, eligibleToday, sessionLimit, waiting_target: reservoir, newWordsPerDay, newWordsInLearningToday }
 }
 
 export function today() {
@@ -84,7 +84,7 @@ export async function subscribeRealtime(userId) {
     state.settings = {
       new_words_per_session: 50,
       new_words_per_day: 25,
-        reservoir: 50,
+      waiting_target: 50,
       cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
       cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -125,7 +125,7 @@ export async function subscribeRealtime(userId) {
     ? {
         new_words_per_session: settingsRow.new_words_per_session ?? 50,
         new_words_per_day: settingsRow.new_words_per_day ?? 25,
-        reservoir: settingsRow.reservoir ?? 50,
+        waiting_target: settingsRow.waiting_target ?? 50,
         cycle_1: settingsRow.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
         cycle_2: settingsRow.cycle_2 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
         cycle_3: settingsRow.cycle_3 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -133,7 +133,7 @@ export async function subscribeRealtime(userId) {
     : {
         new_words_per_session: 50,
         new_words_per_day: 25,
-        reservoir: 50,
+        waiting_target: 50,
         cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
         cycle_2: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
         cycle_3: { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
@@ -258,7 +258,7 @@ export function unsubscribeRealtime() {
   }
 }
 
-/** Refetch a single word and update store (call after generateWordComplete) */
+/** Refetch a single word and update store (call after makeFullCard) */
 export async function refetchWord(wordId, userId) {
   if (!hasSupabase() || !userId || !wordId) return false
   const { data, error } = await supabase
@@ -294,7 +294,7 @@ export async function refetchSettings(userId) {
     state.settings = {
       new_words_per_session: data.new_words_per_session ?? 50,
       new_words_per_day: data.new_words_per_day ?? 25,
-        reservoir: data.reservoir ?? 50,
+        waiting_target: data.waiting_target ?? 50,
       cycle_1: data.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
       cycle_2: data.cycle_2 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       cycle_3: data.cycle_3 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },

@@ -81,7 +81,7 @@ export async function updateSettings(settings) {
 
   const wordsPerSession = Number(settings.new_words_per_session) || 50
   const newWordsPerDay = Number(settings.new_words_per_day) || 25
-  const reservoirVal = Number(settings.reservoir) || 50
+  const reservoirVal = Number(settings.waiting_target) || 50
 
   const stats = getStats()
   const minNewWords = Math.max(1, stats.newWordsInLearningToday ?? 0)
@@ -89,14 +89,14 @@ export async function updateSettings(settings) {
     throw new Error(`New words per day cannot be less than ${minNewWords} (words in learning today)`)
   }
   if (newWordsPerDay > reservoirVal) {
-    throw new Error(`New words per day cannot exceed ${reservoirVal} (reservoir)`)
+    throw new Error(`New words per day cannot exceed ${reservoirVal} (waiting target)`)
   }
 
   const { data: result, error } = await supabase.rpc('update_settings_with_trim', {
     p_user_id: user.id,
     p_new_words_per_session: wordsPerSession,
     p_new_words_per_day: newWordsPerDay,
-    p_reservoir: reservoirVal,
+    p_waiting_target: reservoirVal,
     p_cycle_1: settings.cycle_1,
     p_cycle_2: settings.cycle_2,
     p_cycle_3: settings.cycle_3,
@@ -109,7 +109,7 @@ export async function updateSettings(settings) {
   await refetchSettings(user.id)
 }
 
-/** Ensure schema has new_words_per_day and reservoir columns (call on app init) */
+/** Ensure schema has new_words_per_day and waiting_target columns (call on app init) */
 export async function ensureSchema() {
   if (!hasSupabase()) return
   try {
@@ -138,24 +138,6 @@ export async function assignDailyQuota(userId) {
   }
 }
 
-/** Trigger reservoir refill check (backend queues job) */
-export async function checkRefillNeeded() {
-  if (!hasSupabase()) return
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-
-  await supabase.rpc('check_refill_needed', { p_user_id: user.id })
-}
-
-/** Invoke process-refill Edge Function (for cron or manual). Pass userId to prioritize this user's reservoir job. */
-export async function processRefillJobs(userId = null) {
-  if (!hasSupabase()) return null
-  const body = userId ? { user_id: userId } : {}
-  const { data, error } = await supabase.functions.invoke('process-refill', { body })
-  if (error) throw error
-  return data
-}
-
 /** Migrate audio from old path (wordId-word) to new (word). Run once. See docs/MIGRATE_AUDIO.md */
 export async function migrateAudioStructure() {
   if (!hasSupabase()) throw new Error('Supabase required')
@@ -164,33 +146,29 @@ export async function migrateAudioStructure() {
   return data
 }
 
-/** Generate complete content + audio for one word (card button)
- * Primary: generate-content stage_content x3 (established path, uses refill for TTS)
- * Fallback: generate-word-complete (all-in-one if available) */
-export async function generateWordComplete(userId, wordId, word) {
+/** Request full card generation from server (single button on any stage card).
+ * One call: content (Stage 1+2+3) + audio. Works for empty or refresh. */
+export async function makeFullCard(userId, wordId, word) {
   if (!hasSupabase()) throw new Error('Supabase required')
   const wid = Number(wordId)
   const w = (word ?? '').trim()
   if (!wid || !w) throw new Error('word_id and word required')
 
-  // Primary: generate-content stage_content (stage 1, 2, 3)
-  for (const stage of [1, 2, 3]) {
-    const { data, error } = await supabase.functions.invoke('generate-content', {
-      body: { user_id: userId, job_type: 'stage_content', word_id: wid, word: w, stage },
-    })
-    if (error) {
-      const msg = data?.error ?? error?.message ?? String(error)
-      throw new Error(`Stage ${stage}: ${msg}`)
-    }
-    if (data?.error) throw new Error(data.error)
+  const { data, error } = await supabase.functions.invoke('make-card-content', {
+    body: { user_id: userId, job_type: 'make_full_card', word_id: wid, word: w },
+  })
+  if (error) {
+    const msg = data?.error ?? error?.message ?? String(error)
+    throw new Error(msg)
   }
+  if (data?.error) throw new Error(data.error)
   return { ok: true, content_updated: true }
 }
 
 /** Get AI explanation for Stage 3 (fallback when not in DB) */
 export async function explainSentence(userId, word, sentence, isCorrect) {
   if (!hasSupabase()) return null
-  const { data, error } = await supabase.functions.invoke('generate-content', {
+  const { data, error } = await supabase.functions.invoke('make-card-content', {
     body: {
       user_id: userId || '',
       job_type: 'explain_sentence',
@@ -206,70 +184,8 @@ export async function explainSentence(userId, word, sentence, isCorrect) {
   return data?.explanation ?? null
 }
 
-const _ttsCache = new Map()
-const _ttsPending = new Map()
-
-/** Preload TTS for a word's question content (call early to speed up playback) */
-export function preloadTTS(word) {
-  if (!hasSupabase() || !word) return
-  const stage = word.stage ?? 1
-  let text = ''
-  if (stage === 1) {
-    const defs = word.stage1_definitions ?? []
-    const correct = defs.find((d) => d.is_correct)
-    text = (correct?.definition ?? word.definition ?? '').trim() || `Definition for "${word.word ?? ''}"`
-  } else if (stage === 2) {
-    const s2 = word.stage2_sentences ?? []
-    const first = s2[0]
-    text = (first?.sentence ?? word.example ?? '').trim() || `Use ___ in context.`
-  } else if (stage === 3) {
-    const arr1 = word.stage3_correct ?? []
-    const arr2 = word.stage3_incorrect ?? []
-    const t1 = (arr1[0] ?? word.s3_correct ?? '').trim()
-    const t2 = (arr2[0] ?? word.s3_wrong ?? '').trim()
-    const fallback = `Is "${word.word ?? ''}" used correctly?`
-    if (t1) generateTTS(t1).catch(() => {})
-    if (t2 && t2 !== t1) generateTTS(t2).catch(() => {})
-    if (!t1 && !t2) generateTTS(fallback).catch(() => {})
-    return
-  }
-  if (text) generateTTS(text).catch(() => {})
-}
-
-/** Generate AI TTS for any text (definitions, sentences) */
-export async function generateTTS(text, retries = 2) {
-  if (!hasSupabase()) return null
-  const clean = (text || '').trim()
-  if (!clean) return null
-  const cached = _ttsCache.get(clean)
-  if (cached) return cached
-  const pending = _ttsPending.get(clean)
-  if (pending) return pending
-  const promise = (async () => {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      const { data, error } = await supabase.functions.invoke('generate-tts', {
-        body: { text: clean },
-      })
-      if (!error && data?.url) {
-        _ttsCache.set(clean, data.url)
-        return data.url
-      }
-      if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)))
-      } else if (error) {
-        const msg = data?.error ?? error?.message ?? String(error)
-        throw new Error(msg)
-      }
-    }
-    return null
-  })()
-  _ttsPending.set(clean, promise)
-  try {
-    return await promise
-  } finally {
-    _ttsPending.delete(clean)
-  }
-}
+/** Preload: no-op — audio comes from batch (stored URLs only) */
+export function preloadTTS(_word) {}
 
 /** Export current progress as JSON (from realtime store) */
 export function downloadJSON() {

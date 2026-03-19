@@ -47,11 +47,11 @@ npm run deploy:functions
 2. **Supabase** → Authentication → Providers → GitHub (تفعيل + Client ID/Secret)
 3. **Redirect URLs**: أضف `http://localhost:5173/lexicore/` و URL الإنتاج
 
-## 5. جدولة Refill
+## 5. جدولة التوليد
 
 - فعّل `pg_cron` و `pg_net` من Database → Extensions
-- الجدولة تتم عبر migration `20240317000004` عند `db push`
-- daily_reset: نفّذ `supabase/scripts/schedule-daily-reset.sql` يدوياً
+- الجدولة: migration `20240317000004` عند `db push`
+- التفاصيل: `docs/CRON_SETUP.md` | التسميات: `docs/SERVER_NAMING.md`
 
 ## 6. التشغيل المحلي
 

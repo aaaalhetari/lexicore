@@ -2,7 +2,7 @@
   <div class="stage1-root">
     <div v-if="isPlaceholder" class="card placeholder-only">
       <div class="card-toolbar">
-        <button class="toolbar-btn generate" :disabled="generating" @click="onGenerateComplete" title="Generate content">
+        <button class="toolbar-btn generate" :disabled="generating" @click="onMakeFullCard" title="Make full card">
           {{ generating ? '⏳' : '☁️' }}
         </button>
         <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
@@ -12,10 +12,10 @@
         <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
       </div>
       <div class="placeholder-warn">
-        <span>⚠️ Placeholder content — AI content not generated yet.</span>
+        <span>⚠️ Card content not generated yet.</span>
         <div class="placeholder-actions">
-          <button class="btn-generate" :disabled="generating" @click="onGenerateComplete">
-            {{ generating ? '⏳ Generating…' : '☁️ Generate complete' }}
+          <button class="btn-generate" :disabled="generating" @click="onMakeFullCard">
+            {{ generating ? '⏳ Generating…' : '☁️ Make full card' }}
           </button>
           <button class="btn-skip" :disabled="generating" @click="emit('skip')">Skip & continue →</button>
         </div>
@@ -31,7 +31,7 @@
         <SessionStatsBar :stats="sessionStats" />
       </div>
       <div class="card-toolbar">
-        <button class="toolbar-btn generate" :disabled="generating" @click.stop="onGenerateComplete" title="Generate content">
+        <button class="toolbar-btn generate" :disabled="generating" @click.stop="onMakeFullCard" title="Make full card">
           {{ generating ? '⏳' : '☁️' }}
         </button>
         <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
@@ -40,7 +40,7 @@
         </button>
         <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
       </div>
-      <div class="definition-label">Definition</div>
+      <div class="definition-label">Choose the right meaning</div>
       <div class="definition-text">{{ currentDefinition }}</div>
       <div class="choices-inline">
         <button
@@ -65,14 +65,14 @@
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
 import SessionStatsBar from '../SessionStatsBar.vue'
 import { useAudio } from '../../composables/useAudio.js'
-import { generateWordComplete } from '../../store/data.js'
+import { makeFullCard } from '../../store/data.js'
 import { refetchWord } from '../../store/realtime.js'
 import { getCurrentUser } from '../../store/sync.js'
 
 const props = defineProps({ word: Object, distractorPool: Array, feedback: Object, sessionStats: Object })
 const emit = defineEmits(['answered', 'skip', 'content-generated'])
 
-const { playWord, playTextAI, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
+const { playWord, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
 const answered = ref(false)
 const chosen = ref(null)
 const generating = ref(false)
@@ -130,11 +130,7 @@ watch(() => props.word?.id, () => buildChoices(), { immediate: true })
 function playCardAudio() {
   if (isMuted.value) return
   stopAudio()
-  if (definitionAudioUrl.value) {
-    playStoredAudio(definitionAudioUrl.value, 2)
-  } else {
-    playTextAI(currentDefinition.value, { times: 2 })
-  }
+  if (definitionAudioUrl.value) playStoredAudio(definitionAudioUrl.value, 2)
 }
 
 watch(() => props.sessionStats, (stats, prev) => {
@@ -147,7 +143,6 @@ onUnmounted(() => stopAudio())
 function onCardTap() {
   if (isMuted.value) return
   if (definitionAudioUrl.value) playStoredAudio(definitionAudioUrl.value, 2)
-  else playTextAI(currentDefinition.value, { times: 2 })
 }
 
 function onPlayClick() {
@@ -156,12 +151,10 @@ function onPlayClick() {
     playWord(props.word, 5)
   } else if (definitionAudioUrl.value) {
     playStoredAudio(definitionAudioUrl.value, 2)
-  } else {
-    playTextAI(currentDefinition.value, { times: 2 })
   }
 }
 
-async function onGenerateComplete() {
+async function onMakeFullCard() {
   if (!props.word?.id || !props.word?.word || generating.value) return
   const user = await getCurrentUser()
   if (!user) {
@@ -170,7 +163,8 @@ async function onGenerateComplete() {
   }
   generating.value = true
   try {
-    await generateWordComplete(user.id, props.word.id, props.word.word)
+    await makeFullCard(user.id, props.word.id, props.word.word)
+    await new Promise((r) => setTimeout(r, 800))
     await refetchWord(props.word.id, user.id)
     emit('content-generated', props.word.id)
     if (definitionAudioUrl.value && !isMuted.value) playStoredAudio(definitionAudioUrl.value, 2)

@@ -22,11 +22,11 @@
         Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env, then sign in (Settings → Account).
       </p>
       <p v-else-if="stats.total === 0">
-        Sign in (Settings → Account) and words will be added automatically, or add some manually in Word List.
+        Sign in (Settings → Account). Words are generated on the server. Try again later or add some manually in Word List.
       </p>
       <p v-else>Come back tomorrow to continue with the next cycle.</p>
-      <button v-if="stats.total === 0 && hasSupabase()" class="btn btn-secondary" style="margin-top:12px;width:100%" :disabled="generating" @click="currentUser ? generateWords() : $emit('goToSettings')">
-        {{ generating ? 'Generating…' : (currentUser ? '☁️ Generate words from cloud' : '🔐 Sign in first (tap to go to Settings)') }}
+      <button v-if="stats.total === 0 && hasSupabase()" class="btn btn-secondary" style="margin-top:12px;width:100%" @click="$emit('goToSettings')">
+        🔐 Sign in (Settings → Account)
       </button>
       <button class="btn btn-primary" style="margin-top:12px;width:100%" @click="$emit('end')">Back Home</button>
     </div>
@@ -52,13 +52,25 @@
       <div class="session-content">
         <Swiper
           :key="'swiper-' + displayOrder.length"
+          :modules="[FreeMode]"
           class="session-swiper"
-          :slides-per-view="1.25"
-          :centered-slides="true"
-          :space-between="20"
+          direction="vertical"
+          :slides-per-view="1"
+          :space-between="16"
           :initial-slide="displayIndex"
-          :allow-slide-prev="true"
-          :allow-slide-next="true"
+          :speed="300"
+          :free-mode="{
+            enabled: true,
+            sticky: true,
+            momentum: true,
+            momentumBounce: false,
+            momentumRatio: 1.08,
+            momentumVelocityRatio: 1.45,
+            minimumVelocity: 0.22,
+          }"
+          :threshold="8"
+          :long-swipes-ratio="0.28"
+          :long-swipes-ms="240"
           @swiper="onSwiper"
           @touch-start="onSwiperTouchStart"
           @slide-change="onSlideChange"
@@ -107,7 +119,6 @@
             </div>
           </SwiperSlide>
         </Swiper>
-        <div class="swipe-next-hint">← swipe to browse cards →</div>
       </div>
     </div>
   </div>
@@ -116,10 +127,12 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { Swiper, SwiperSlide } from 'swiper/vue'
+import { FreeMode } from 'swiper/modules'
 import 'swiper/css'
+import 'swiper/css/free-mode'
 import { useSession } from '../composables/useSession.js'
 import { useAudio } from '../composables/useAudio.js'
-import { getData, getStats, downloadJSON, preloadTTS, explainSentence, checkRefillNeeded, processRefillJobs } from '../store/data.js'
+import { getData, getStats, downloadJSON, preloadTTS, explainSentence } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser } from '../store/sync.js'
 import Stage1 from './stage/Stage1.vue'
@@ -158,7 +171,6 @@ const contentRefreshKey = ref(0)
 const swiperRef = ref(null)
 const s3UseCorrect = ref(true)
 const errorMessage = ref('')
-const generating = ref(false)
 const currentUser = ref(null)
 const learningTargetIndex = ref(0)
 
@@ -258,31 +270,6 @@ onMounted(async () => {
     phase.value = 'error'
   }
 })
-
-async function generateWords() {
-  if (!hasSupabase() || !currentUser.value) return
-  generating.value = true
-  try {
-    await checkRefillNeeded()
-    await processRefillJobs(currentUser.value.id)
-    await new Promise((r) => setTimeout(r, 2500))
-    const r = await startSession()
-    if (r === 'started') {
-      phase.value = 'question'
-      if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
-      preloadTTS(currentWord.value)
-    } else {
-      phase.value = 'done_today'
-      if (getStats().total === 0) {
-        alert('No words yet. New words are being generated on the server. Try again in a minute or add words manually in Word List.')
-      }
-    }
-  } catch (e) {
-    alert('Start failed: ' + (e?.message || e))
-  } finally {
-    generating.value = false
-  }
-}
 
 async function onAnswered(isCorrect) {
   if (answeringLock.value) return
@@ -390,8 +377,9 @@ async function retryExplanation() {
   }
 }
 
-function onContentGenerated(wordId) {
+async function onContentGenerated(wordId) {
   syncWordFromStore(wordId, { fullContent: true })
+  await nextTick()
   contentRefreshKey.value++
 }
 
@@ -432,14 +420,14 @@ function onSkip() {
 
 <style scoped>
 /* Session question layout (thumb-friendly) */
-.session-fill { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.session-fill { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
 .session-question-wrap {
-  display: flex; flex-direction: column; min-height: 0; flex: 1;
+  display: flex; flex-direction: column; min-height: 0; flex: 1; height: 100%;
   overflow: hidden;
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 .session-content {
-  flex: 1; min-height: 0; overflow: hidden;
+  flex: 1; min-height: 0; height: 100%; overflow: hidden;
   display: flex; flex-direction: column;
 }
 .stage-transition-wrap {
@@ -486,12 +474,13 @@ function onSkip() {
 /* Swiper: fixed height prevents jump when switching between tall/short cards */
 .session-swiper {
   flex: 1;
-  height: min(640px, 88vh);
-  min-height: min(560px, 80vh);
+  height: 100%;
+  min-height: 0;
   width: 100%;
   overflow: hidden;
 }
 .session-swiper :deep(.swiper-wrapper) {
+  height: 100%;
   align-items: stretch;
 }
 .session-swiper :deep(.swiper-slide) {
@@ -507,8 +496,7 @@ function onSkip() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 .session-swiper :deep(.slide-inner .card) {
   width: 100%;
@@ -519,14 +507,6 @@ function onSkip() {
 /* البطاقة المستهدفة واضحة، الباقي أغمق قليلاً */
 .session-swiper :deep(.swiper-slide:not(.slide-target)) {
   opacity: 0.6;
-}
-
-.swipe-next-hint {
-  flex-shrink: 0;
-  padding: 8px var(--sp);
-  font-size: 0.85rem;
-  color: var(--text3);
-  text-align: center;
 }
 
 /* Slide card transition — smooth professional animation */

@@ -1,10 +1,10 @@
-// LexiCore: Generate complete content + audio for one word (card button)
-// stage1_definitions, stage2_sentences, stage3_correct/incorrect, all audio columns
+// LexiCore: Card audio — batch only (word + Stage 1+2+3)
+// { user_id, word_id, word } → full card audio, update vocabulary
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
+import { callOpenAITTS } from "../_shared/tts.ts"
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")
 
 function sanitizeWord(word: string): string {
@@ -17,80 +17,9 @@ function sanitizeWord(word: string): string {
     .slice(0, 40) || "word"
 }
 
-async function generateWithClaude(prompt: string, system: string, maxTokens = 1024): Promise<string> {
-  if (!ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not set")
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  })
-  if (!res.ok) throw new Error(`Claude API error: ${await res.text()}`)
-  const data = await res.json()
-  return data.content?.[0]?.text ?? ""
-}
-
-async function generateStage1Definitions(word: string): Promise<{ definition: string; is_correct: boolean }[]> {
-  const system = `You are a vocabulary learning content generator. Output valid JSON only, no markdown.`
-  const prompt = `Generate 5 multiple-choice definitions for the English word "${word}".
-Return a JSON array of objects: [{"definition":"...","is_correct":true/false}]
-Exactly ONE must have "is_correct":true (the real definition). The rest are plausible distractors.`
-  const text = await generateWithClaude(prompt, system)
-  const match = text.match(/\[[\s\S]*\]/)
-  if (!match) throw new Error("Invalid JSON from Claude")
-  return JSON.parse(match[0])
-}
-
-async function generateStage2Sentences(word: string): Promise<{ sentence: string; meaning: string }[]> {
-  const system = `You are a vocabulary learning content generator. Output valid JSON only, no markdown.`
-  const prompt = `Generate 5 gap-fill example sentences for the English word "${word}".
-Each sentence must contain exactly "___" where the word goes.
-Return a JSON array: [{"sentence":"...","meaning":"..."}]`
-  const text = await generateWithClaude(prompt, system)
-  const match = text.match(/\[[\s\S]*\]/)
-  if (!match) throw new Error("Invalid JSON from Claude")
-  return JSON.parse(match[0])
-}
-
-async function generateStage3Sentences(word: string): Promise<{ correct: string[]; incorrect: string[] }> {
-  const system = `You are a vocabulary learning content generator. Output valid JSON only, no markdown.`
-  const prompt = `Generate 5 CORRECT and 5 INCORRECT usage sentences for the English word "${word}".
-Correct = word used properly. Incorrect = word used wrongly (wrong meaning, grammar, part of speech, or confusion with similar words like advice/advise, affect/effect).
-Return JSON: {"correct":["s1",...],"incorrect":["s1",...]}`
-  const text = await generateWithClaude(prompt, system, 2048)
-  const match = text.match(/\{[\s\S]*\}/)
-  if (!match) throw new Error("Invalid JSON from Claude")
-  const parsed = JSON.parse(match[0])
-  return {
-    correct: parsed.correct ?? [],
-    incorrect: parsed.incorrect ?? [],
-  }
-}
-
 async function generateTTS(text: string): Promise<ArrayBuffer> {
   if (!OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not set")
-  const res = await fetch("https://api.openai.com/v1/audio/speech", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "tts-1-hd",
-      input: text,
-      voice: "alloy",
-    }),
-  })
-  if (!res.ok) throw new Error(`OpenAI TTS error: ${await res.text()}`)
-  return res.arrayBuffer()
+  return callOpenAITTS(text, OPENAI_API_KEY)
 }
 
 function getStoragePath(
@@ -114,8 +43,15 @@ async function sleep(ms: number) {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
+  if (!OPENAI_API_KEY) {
+    return new Response(
+      JSON.stringify({ error: "OPENAI_API_KEY not set" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    )
+  }
+
   try {
-    const body = (await req.json()) as { user_id: string; word_id: number; word: string }
+    const body = (await req.json()) as { user_id?: string; word_id?: number; word?: string }
     const { user_id, word_id, word } = body
     if (!user_id || !word_id || !word) {
       return new Response(
@@ -138,42 +74,19 @@ Deno.serve(async (req) => {
 
     if (vocabErr || !vocab) throw new Error("Word not found")
 
-    let defs = (vocab.stage1_definitions ?? []) as { definition?: string; is_correct?: boolean }[]
-    let sents = (vocab.stage2_sentences ?? []) as { sentence?: string; meaning?: string }[]
-    let correct = (vocab.stage3_correct ?? []) as string[]
-    let incorrect = (vocab.stage3_incorrect ?? []) as string[]
+    const defs = (vocab.stage1_definitions ?? []) as { definition?: string }[]
+    const sents = (vocab.stage2_sentences ?? []) as { sentence?: string }[]
+    const correct = (vocab.stage3_correct ?? []) as string[]
+    const incorrect = (vocab.stage3_incorrect ?? []) as string[]
 
-    defs = await generateStage1Definitions(word)
-    sents = await generateStage2Sentences(word)
-    const s3 = await generateStage3Sentences(word)
-    correct = s3.correct
-    incorrect = s3.incorrect
-    await supabase
-      .from("vocabulary")
-      .update({
-        stage1_definitions: defs,
-        stage2_sentences: sents,
-        stage3_correct: correct,
-        stage3_incorrect: incorrect,
-        stage3_explanations_correct: [],
-        stage3_explanations_incorrect: [],
-      })
-      .eq("id", word_id)
-      .eq("user_id", user_id)
-
-    if (!OPENAI_API_KEY) {
-      return new Response(
-        JSON.stringify({ ok: true, content_updated: true, audio_skipped: true }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
-
+    let generated = 0
     let audioWordUrl: string | null = null
     const audioStage1: string[] = []
     const audioStage2: string[] = []
     const audioStage3Correct: string[] = []
     const audioStage3Incorrect: string[] = []
 
+    // 1. Word pronunciation
     const wordText = (word ?? "").trim()
     if (wordText) {
       const buf = await generateTTS(wordText)
@@ -184,9 +97,11 @@ Deno.serve(async (req) => {
       })
       const { data: urlData } = supabase.storage.from("lexicore-audio").getPublicUrl(path)
       audioWordUrl = urlData.publicUrl
+      generated++
       await sleep(300)
     }
 
+    // 2. Stage1 definitions
     for (let i = 0; i < defs.length; i++) {
       const text = (defs[i]?.definition ?? "").trim()
       if (!text) {
@@ -201,10 +116,12 @@ Deno.serve(async (req) => {
       })
       const { data: urlData } = supabase.storage.from("lexicore-audio").getPublicUrl(path)
       audioStage1.push(urlData.publicUrl)
+      generated++
       await sleep(300)
     }
     while (audioStage1.length < defs.length) audioStage1.push("")
 
+    // 3. Stage2 sentences
     for (let i = 0; i < sents.length; i++) {
       const text = (sents[i]?.sentence ?? "").trim()
       if (!text) {
@@ -219,10 +136,12 @@ Deno.serve(async (req) => {
       })
       const { data: urlData } = supabase.storage.from("lexicore-audio").getPublicUrl(path)
       audioStage2.push(urlData.publicUrl)
+      generated++
       await sleep(300)
     }
     while (audioStage2.length < sents.length) audioStage2.push("")
 
+    // 4. Stage3 correct
     for (let i = 0; i < correct.length; i++) {
       const text = (correct[i] ?? "").trim()
       if (!text) {
@@ -237,10 +156,12 @@ Deno.serve(async (req) => {
       })
       const { data: urlData } = supabase.storage.from("lexicore-audio").getPublicUrl(path)
       audioStage3Correct.push(urlData.publicUrl)
+      generated++
       await sleep(300)
     }
     while (audioStage3Correct.length < correct.length) audioStage3Correct.push("")
 
+    // 5. Stage3 incorrect
     for (let i = 0; i < incorrect.length; i++) {
       const text = (incorrect[i] ?? "").trim()
       if (!text) {
@@ -255,10 +176,12 @@ Deno.serve(async (req) => {
       })
       const { data: urlData } = supabase.storage.from("lexicore-audio").getPublicUrl(path)
       audioStage3Incorrect.push(urlData.publicUrl)
+      generated++
       await sleep(300)
     }
     while (audioStage3Incorrect.length < incorrect.length) audioStage3Incorrect.push("")
 
+    // Single update with all audio
     const updates: Record<string, unknown> = {}
     if (audioWordUrl) updates.audio_word = audioWordUrl
     if (audioStage1.length) updates.audio_stage1_definitions = audioStage1
@@ -270,12 +193,12 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, content_updated: true }),
+      JSON.stringify({ generated, word_id }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error("generate-word-complete error:", msg)
+    console.error("generate-all-tts-for-word error:", msg)
     return new Response(
       JSON.stringify({ error: msg }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

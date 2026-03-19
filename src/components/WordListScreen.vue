@@ -11,7 +11,7 @@
 
     <!-- Word List -->
     <div v-if="words.length === 0" class="empty-msg">
-      No words yet. Add from home or import a CSV.
+      No words yet. Import a CSV or sign in for server-generated words.
     </div>
     <div v-else class="word-list" style="padding-bottom:80px">
       <div v-for="w in words" :key="w.id" class="word-item">

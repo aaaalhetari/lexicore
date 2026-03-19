@@ -1,7 +1,6 @@
-// LexiCore: Server-side refill trigger for cron
-// 1. Call check_refill_needed for all users (queues reservoir + tts_content jobs)
-// 2. Invoke process-refill until no more jobs
-// Schedule via cron-job.org or similar: every hour
+// LexiCore: Card generation cron (schedule: every hour)
+// 1. check_refill_needed: queue add_more_words + add_card_sound + make_card_content jobs per user
+// 2. run-card-jobs: drain jobs (Stage 1|2|3 content + audio)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { corsHeaders } from "../_shared/cors.ts"
@@ -31,7 +30,7 @@ Deno.serve(async (req) => {
 
     let totalProcessed = 0
     for (let i = 0; i < 30; i++) {
-      const res = await fetch(`${FUNCTIONS_URL}/process-refill`, {
+      const res = await fetch(`${FUNCTIONS_URL}/run-card-jobs`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

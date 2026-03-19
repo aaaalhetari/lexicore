@@ -1,28 +1,25 @@
-# LexiCore Edge Functions config
-# generate-content: allow invoke without JWT (function validates user_id internally)
-[functions.generate-content]
+# LexiCore Edge Functions — B1-friendly naming
+# Stage 1: Definition | Stage 2: Gap-fill | Stage 3: Usage judgment
+
+# make-card-content: محتوى البطاقة
+# make_full_card | make_card_content | add_more_words | explain_sentence
+[functions.make-card-content]
 verify_jwt = false
 
-# process-refill: processes refill_jobs queue (invoked by refill-cron or client)
-[functions.process-refill]
+# run-card-jobs: معالجة مهام التوليد
+# Invoked by: auto-add-cards
+[functions.run-card-jobs]
 verify_jwt = false
 
-# refill-cron: server-side refill trigger; schedule via cron-job.org (e.g. every hour)
-[functions.refill-cron]
+# auto-add-cards: جدولة التوليد التلقائي (كل ساعة)
+[functions.auto-add-cards]
 verify_jwt = false
 
-# generate-word-complete: card button - generate content + audio for one word
-[functions.generate-word-complete]
+# add-card-sound: صوتيات البطاقة (batch only)
+# Invoked by: run-card-jobs, make-card-content
+[functions.add-card-sound]
 verify_jwt = false
 
-# generate-all-tts-for-word: TTS for word + all stages (invoked by process-refill)
-[functions.generate-all-tts-for-word]
-verify_jwt = false
-
-# generate-tts: single-text TTS (invoked by useAudio, preloadTTS)
-[functions.generate-tts]
-verify_jwt = false
-
-# migrate-audio-structure: one-time migration (old path wordId-word -> word)
+# migrate-audio-structure: ترحيل بنية الصوتيات (مرة واحدة)
 [functions.migrate-audio-structure]
 verify_jwt = false

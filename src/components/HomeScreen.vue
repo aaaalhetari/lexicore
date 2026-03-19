@@ -24,10 +24,10 @@
         <div class="stat-label">New words</div>
         <div v-if="stats.newWordsPerDay" class="stat-hint">of {{ stats.newWordsPerDay }}/day</div>
       </div>
-      <div class="stat-item" :title="`Buffer: pre-generated words. When &lt; ${stats.reservoir ?? 50} (reservoir), refill adds more. See Settings → Reservoir`">
+      <div class="stat-item" :title="`Buffer: pre-generated words. When below target, server adds more. See Settings → Waiting target`">
         <div class="stat-num">{{ stats.waiting }}</div>
         <div class="stat-label">Waiting</div>
-        <div v-if="stats.reservoir" class="stat-hint">of {{ stats.reservoir }} target</div>
+        <div v-if="stats.waiting_target" class="stat-hint">of {{ stats.waiting_target }} target</div>
       </div>
     </div>
 
@@ -74,12 +74,10 @@
 <script setup>
 import { computed } from 'vue'
 import { getStats } from '../store/data.js'
-import { hasSupabase } from '../lib/supabase.js'
 
 defineEmits(['start', 'words', 'settings'])
 
 const stats = computed(() => getStats())
-const hasSync = hasSupabase()
 </script>
 
 <style scoped>
