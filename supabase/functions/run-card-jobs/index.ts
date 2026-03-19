@@ -2,33 +2,15 @@
 // Job types: add_more_words | make_card_content | add_card_sound
 // Invoked by: auto-add-cards
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { corsHeaders } from "../_shared/cors.ts"
-
-const FUNCTIONS_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1`
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-
-async function invokeFunction(name: string, body: object) {
-  const res = await fetch(`${FUNCTIONS_URL}/${name}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SERVICE_ROLE}`,
-    },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) throw new Error(`Function ${name} error: ${await res.text()}`)
-  return res.json()
-}
+import { createServiceClient } from "../_shared/supabase.ts"
+import { invokeEdgeFunction } from "../_shared/edge.ts"
+import { jsonErr, jsonOk, optionsOk } from "../_shared/http.ts"
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
+  if (req.method === "OPTIONS") return optionsOk()
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    )
+    const supabase = createServiceClient()
 
     let userId: string | null = null
     try {
@@ -38,77 +20,27 @@ Deno.serve(async (req) => {
       // ignore
     }
 
-    // Reset jobs stuck in "processing" (from timed-out runs)
-    await supabase.from("card_jobs").update({ status: "pending" }).eq("status", "processing")
+    await supabase.rpc("reset_stuck_card_jobs")
 
-    // Retry failed jobs after 1 hour
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-    await supabase
-      .from("card_jobs")
-      .update({ status: "pending" })
-      .eq("status", "failed")
-      .lt("processed_at", oneHourAgo)
+    const { data: jobs, error: claimErr } = await supabase.rpc("claim_card_jobs", {
+      p_limit: 6,
+      p_user_id: userId,
+    })
 
-    // Priority: user_id ? (add_more_words, add_card_sound) : (add_card_sound, make_card_content, add_more_words)
-    let jobs: { id: number; user_id: string; job_type: string; payload: Record<string, unknown> }[] = []
-    if (userId) {
-      const { data: userReservoir } = await supabase
-        .from("card_jobs")
-        .select("*")
-        .eq("status", "pending")
-        .eq("job_type", "add_more_words")
-        .eq("user_id", userId)
-        .limit(1)
-      const { data: userTts } = await supabase
-        .from("card_jobs")
-        .select("*")
-        .eq("status", "pending")
-        .eq("job_type", "add_card_sound")
-        .eq("user_id", userId)
-        .limit(5)
-      jobs = [...(userReservoir ?? []), ...(userTts ?? [])].slice(0, 6)
-    }
-
-    if (!jobs.length) {
-      const { data: ttsJobs } = await supabase
-        .from("card_jobs")
-        .select("*")
-        .eq("status", "pending")
-        .eq("job_type", "add_card_sound")
-        .limit(4)
-      const { data: otherJobs } = await supabase
-        .from("card_jobs")
-        .select("*")
-        .eq("status", "pending")
-        .neq("job_type", "add_card_sound")
-        .order("job_type", { ascending: true })
-        .limit(4)
-      jobs = [...(ttsJobs ?? []), ...(otherJobs ?? [])].slice(0, 6)
-    }
-
-    if (!jobs?.length) {
-      return new Response(
-        JSON.stringify({ processed: 0 }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
+    if (claimErr) throw claimErr
+    if (!jobs?.length) return jsonOk({ processed: 0 })
 
     let processed = 0
     for (const job of jobs) {
-      await supabase
-        .from("card_jobs")
-        .update({ status: "processing" })
-        .eq("id", job.id)
-
       try {
         if (job.job_type === "add_more_words") {
-          await invokeFunction("make-card-content", {
+          await invokeEdgeFunction("make-card-content", {
             user_id: job.user_id,
             job_type: "add_more_words",
             count: job.payload?.count ?? 20,
           })
         } else if (job.job_type === "make_card_content") {
-          await invokeFunction("make-card-content", {
+          await invokeEdgeFunction("make-card-content", {
             user_id: job.user_id,
             job_type: "make_card_content",
             word_id: job.payload?.word_id,
@@ -116,38 +48,26 @@ Deno.serve(async (req) => {
             stage: job.payload?.stage,
           })
         } else if (job.job_type === "add_card_sound") {
-          await invokeFunction("add-card-sound", {
+          await invokeEdgeFunction("add-card-sound", {
             user_id: job.user_id,
             word_id: job.payload?.word_id,
             word: job.payload?.word,
           })
         } else {
-          throw new Error(`Unknown job_type (expected add_more_words|make_card_content|add_card_sound): ${job.job_type}`)
+          throw new Error(`Unknown job_type: ${job.job_type}`)
         }
 
-        await supabase
-          .from("card_jobs")
-          .update({ status: "done", processed_at: new Date().toISOString() })
-          .eq("id", job.id)
+        await supabase.rpc("complete_card_job", { p_job_id: job.id })
         processed++
       } catch (e) {
         console.error("Job failed:", job.id, e)
-        await supabase
-          .from("card_jobs")
-          .update({ status: "failed", processed_at: new Date().toISOString() })
-          .eq("id", job.id)
+        await supabase.rpc("fail_card_job", { p_job_id: job.id })
       }
     }
 
-    return new Response(
-      JSON.stringify({ processed }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    )
+    return jsonOk({ processed })
   } catch (err) {
     console.error(err)
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    )
+    return jsonErr(err, 500)
   }
 })

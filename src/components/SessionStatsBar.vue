@@ -1,13 +1,9 @@
 <template>
   <div v-if="stats" class="session-stats-bar">
-    <div class="stats-row stats-session">
+    <div class="stats-row">
       <div class="stat-item" :title="t.remainingTip">
         <span class="stat-lbl">{{ t.remaining }}</span>
         <b>{{ stats.remaining }}</b>
-      </div>
-      <div class="stat-item" :title="t.totalTip">
-        <span class="stat-lbl">{{ t.total }}</span>
-        <b>{{ stats.total }}</b>
       </div>
       <div class="stat-item correct" :title="t.correctTip">
         <span class="stat-lbl">✓</span>
@@ -20,16 +16,6 @@
       <div class="stat-item" :title="t.accuracyTip">
         <span class="stat-lbl">{{ t.accuracy }}</span>
         <b>{{ stats.accuracyPct }}%</b>
-      </div>
-    </div>
-    <div class="stats-row stats-daily">
-      <div class="stat-item" :title="t.doneTodayTip">
-        <span class="stat-lbl">{{ t.doneToday }}</span>
-        <b>{{ stats.todayAnswered }}</b>
-      </div>
-      <div class="stat-item" :title="t.availableTip">
-        <span class="stat-lbl">{{ t.available }}</span>
-        <b>{{ stats.eligibleToday }}</b>
       </div>
       <div class="stat-item stat-cycles" :title="t.cycleTip">
         <span class="stat-lbl">{{ t.cycle }}</span>
@@ -63,16 +49,10 @@ const t = computed(() => {
   return ar ? {
     remaining: 'متبقي',
     remainingTip: 'كلمات متبقية في هذه الجلسة',
-    total: 'في الجلسة',
-    totalTip: 'إجمالي الكلمات في هذه الجلسة',
     correctTip: 'إجابات صحيحة في هذه الجلسة',
     wrongTip: 'إجابات خاطئة في هذه الجلسة',
     accuracy: 'الدقة',
     accuracyTip: 'نسبة الإجابات الصحيحة',
-    doneToday: 'تم اليوم',
-    doneTodayTip: 'إجمالي الكلمات التي تمت اليوم',
-    available: 'متاح',
-    availableTip: 'كلمات يمكنك ممارستها اليوم',
     cycle: 'الدورة',
     cycleTip: 'دورة التعلم: 1=أولى، 2=ثانية، 3=ثالثة',
     stage: 'المرحلة',
@@ -82,16 +62,10 @@ const t = computed(() => {
   } : {
     remaining: 'Remaining',
     remainingTip: 'Words left in this session',
-    total: 'In Session',
-    totalTip: 'Total words in this session',
     correctTip: 'Correct answers in this session',
     wrongTip: 'Wrong answers in this session',
     accuracy: 'Accuracy',
     accuracyTip: 'Percentage of correct answers',
-    doneToday: 'Done Today',
-    doneTodayTip: 'Total words answered today (all sessions)',
-    available: 'Available',
-    availableTip: 'Words you can practice today',
     cycle: 'Cycle',
     cycleTip: 'Learning cycle: 1=first pass, 2=second, 3=third',
     stage: 'Stage',
@@ -106,8 +80,8 @@ const t = computed(() => {
 .session-stats-bar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 6px 0 12px;
+  gap: 6px;
+  padding: 6px 0 10px;
   font-size: 0.7rem;
   width: 100%;
 }
@@ -115,31 +89,34 @@ const t = computed(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 16px;
+  gap: 8px 14px;
   min-height: 28px;
 }
-.stats-session { border-bottom: 1px solid var(--border); padding-bottom: 8px; }
-.stats-daily { padding-top: 4px; }
 .stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
   color: var(--text2);
 }
-.stat-item b { font-weight: 600; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+.stat-item b {
+  font-weight: 600;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+}
 .stat-item.correct b { color: var(--green); }
 .stat-item.wrong b { color: var(--red); }
 .stat-lbl {
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   color: var(--text3);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
 }
 .cycle-dots, .stage-dots {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 .stat-item .dot {
   width: 18px;
@@ -152,10 +129,12 @@ const t = computed(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s;
 }
 .stat-item .dot.active {
-  background: var(--gold-dim);
+  background: linear-gradient(140deg, rgba(210, 177, 90, 0.25), rgba(210, 177, 90, 0.1));
   color: var(--gold);
   border: 1px solid var(--gold);
+  box-shadow: 0 0 8px rgba(210, 177, 90, 0.15);
 }
 </style>

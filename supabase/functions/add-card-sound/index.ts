@@ -1,8 +1,8 @@
 // LexiCore: Card audio — batch only (word + Stage 1+2+3)
-// { user_id, word_id, word } → full card audio, update vocabulary
+// { user_id, word_id, word } -> full card audio, update vocabulary
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { corsHeaders } from "../_shared/cors.ts"
+import { createServiceClient } from "../_shared/supabase.ts"
+import { jsonErr, jsonOk, optionsOk } from "../_shared/http.ts"
 import { callOpenAITTS } from "../_shared/tts.ts"
 
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")
@@ -22,14 +22,7 @@ async function generateTTS(text: string): Promise<ArrayBuffer> {
   return callOpenAITTS(text, OPENAI_API_KEY)
 }
 
-function getStoragePath(
-  _userId: string,
-  _wordId: number,
-  word: string,
-  stage: number,
-  index: number,
-  subType?: string
-): string {
+function getStoragePath(word: string, stage: number, index: number, subType?: string): string {
   const safe = sanitizeWord(word)
   if (stage === 0) return `all-lexicore-audio/${safe}/word.mp3`
   const suffix = subType ? `_${subType}_${index}` : `_${index}`
@@ -41,29 +34,16 @@ async function sleep(ms: number) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
+  if (req.method === "OPTIONS") return optionsOk()
 
-  if (!OPENAI_API_KEY) {
-    return new Response(
-      JSON.stringify({ error: "OPENAI_API_KEY not set" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    )
-  }
+  if (!OPENAI_API_KEY) return jsonErr("OPENAI_API_KEY not set", 500)
 
   try {
     const body = (await req.json()) as { user_id?: string; word_id?: number; word?: string }
     const { user_id, word_id, word } = body
-    if (!user_id || !word_id || !word) {
-      return new Response(
-        JSON.stringify({ error: "user_id, word_id, word required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      )
-    }
+    if (!user_id || !word_id || !word) return jsonErr("user_id, word_id, word required", 400)
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    )
+    const supabase = createServiceClient()
 
     const { data: vocab, error: vocabErr } = await supabase
       .from("vocabulary")
@@ -90,7 +70,7 @@ Deno.serve(async (req) => {
     const wordText = (word ?? "").trim()
     if (wordText) {
       const buf = await generateTTS(wordText)
-      const path = getStoragePath(user_id, word_id, word, 0, 0)
+      const path = getStoragePath(word, 0, 0)
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
         contentType: "audio/mpeg",
         upsert: true,
@@ -104,12 +84,9 @@ Deno.serve(async (req) => {
     // 2. Stage1 definitions
     for (let i = 0; i < defs.length; i++) {
       const text = (defs[i]?.definition ?? "").trim()
-      if (!text) {
-        audioStage1.push("")
-        continue
-      }
+      if (!text) { audioStage1.push(""); continue }
       const buf = await generateTTS(text)
-      const path = getStoragePath(user_id, word_id, word, 1, i)
+      const path = getStoragePath(word, 1, i)
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
         contentType: "audio/mpeg",
         upsert: true,
@@ -124,12 +101,9 @@ Deno.serve(async (req) => {
     // 3. Stage2 sentences
     for (let i = 0; i < sents.length; i++) {
       const text = (sents[i]?.sentence ?? "").trim()
-      if (!text) {
-        audioStage2.push("")
-        continue
-      }
+      if (!text) { audioStage2.push(""); continue }
       const buf = await generateTTS(text)
-      const path = getStoragePath(user_id, word_id, word, 2, i)
+      const path = getStoragePath(word, 2, i)
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
         contentType: "audio/mpeg",
         upsert: true,
@@ -144,12 +118,9 @@ Deno.serve(async (req) => {
     // 4. Stage3 correct
     for (let i = 0; i < correct.length; i++) {
       const text = (correct[i] ?? "").trim()
-      if (!text) {
-        audioStage3Correct.push("")
-        continue
-      }
+      if (!text) { audioStage3Correct.push(""); continue }
       const buf = await generateTTS(text)
-      const path = getStoragePath(user_id, word_id, word, 3, i, "correct")
+      const path = getStoragePath(word, 3, i, "correct")
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
         contentType: "audio/mpeg",
         upsert: true,
@@ -164,12 +135,9 @@ Deno.serve(async (req) => {
     // 5. Stage3 incorrect
     for (let i = 0; i < incorrect.length; i++) {
       const text = (incorrect[i] ?? "").trim()
-      if (!text) {
-        audioStage3Incorrect.push("")
-        continue
-      }
+      if (!text) { audioStage3Incorrect.push(""); continue }
       const buf = await generateTTS(text)
-      const path = getStoragePath(user_id, word_id, word, 3, i, "incorrect")
+      const path = getStoragePath(word, 3, i, "incorrect")
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
         contentType: "audio/mpeg",
         upsert: true,
@@ -192,16 +160,10 @@ Deno.serve(async (req) => {
       await supabase.from("vocabulary").update(updates).eq("id", word_id).eq("user_id", user_id)
     }
 
-    return new Response(
-      JSON.stringify({ generated, word_id }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    )
+    return jsonOk({ generated, word_id })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error("generate-all-tts-for-word error:", msg)
-    return new Response(
-      JSON.stringify({ error: msg }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    )
+    console.error("add-card-sound error:", msg)
+    return jsonErr(msg, 500)
   }
 })

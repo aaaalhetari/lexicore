@@ -1,26 +1,16 @@
 <template>
   <div class="stage2-root">
-    <div v-if="isPlaceholder" class="card placeholder-only">
-      <div class="card-toolbar">
-        <button class="toolbar-btn generate" :disabled="generating" @click="onMakeFullCard" title="Make full card">
-          {{ generating ? '⏳' : '☁️' }}
-        </button>
-        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
-        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
-          {{ isMuted ? '🔇' : '🔈' }}
-        </button>
-        <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
-      </div>
-      <div class="placeholder-warn">
-        <span>⚠️ Card content not generated yet.</span>
-        <div class="placeholder-actions">
-          <button class="btn-generate" :disabled="generating" @click="onMakeFullCard">
-            {{ generating ? '⏳ Generating…' : '☁️ Make full card' }}
-          </button>
-          <button class="btn-skip" :disabled="generating" @click="emit('skip')">Skip & continue →</button>
-        </div>
-      </div>
-    </div>
+    <StagePlaceholderCard
+      v-if="isPlaceholder"
+      :generating="generating"
+      :is-muted="isMuted"
+      :show-exit="!!sessionStats"
+      @generate="onMakeFullCard"
+      @play="onPlayClick"
+      @mute="toggleMute"
+      @exit="sessionStats?.onClose?.()"
+      @skip="emit('skip')"
+    />
     <div
       v-else
       ref="cardEl"
@@ -30,16 +20,15 @@
       <div v-if="sessionStats" class="card-stats">
         <SessionStatsBar :stats="sessionStats" />
       </div>
-      <div class="card-toolbar">
-        <button class="toolbar-btn generate" :disabled="generating" @click.stop="onMakeFullCard" title="Make full card">
-          {{ generating ? '⏳' : '☁️' }}
-        </button>
-        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
-        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
-          {{ isMuted ? '🔇' : '🔈' }}
-        </button>
-        <button class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
-      </div>
+      <StageCardToolbar
+        :generating="generating"
+        :is-muted="isMuted"
+        :show-exit="!!sessionStats"
+        @generate="onMakeFullCard"
+        @play="onPlayClick"
+        @mute="toggleMute"
+        @exit="sessionStats?.onClose?.()"
+      />
       <div class="definition-label">Put the word in the sentence</div>
       <div
         class="sentence-text no-swipe-scroll"
@@ -75,7 +64,6 @@
           @click.stop="revealed && !answered && answer(true)"
         >✓</div>
       </div>
-      <div class="swipe-hint">← tap ✗ &nbsp;|&nbsp; tap ✓ →</div>
     </div>
   </div>
 </template>
@@ -83,6 +71,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
 import SessionStatsBar from '../SessionStatsBar.vue'
+import StageCardToolbar from './StageCardToolbar.vue'
+import StagePlaceholderCard from './StagePlaceholderCard.vue'
 import { useAudio } from '../../composables/useAudio.js'
 import { useSwipe } from '../../composables/useSwipe.js'
 import { makeFullCard } from '../../store/data.js'
@@ -222,12 +212,14 @@ function answer(val) {
   margin: 0 4px;
 }
 .stage2-meaning-hint {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: var(--gold);
   margin-bottom: 4px;
   text-align: center;
   max-width: 320px;
   line-height: 1.4;
+  font-style: italic;
+  opacity: 0.85;
 }
 .sentence-text {
   font-family: 'DM Sans', sans-serif;
@@ -251,6 +243,7 @@ function answer(val) {
   font-size: 0.5em;
   line-height: 1.4;
   max-width: 320px;
+  transition: all 0.3s ease;
 }
 .blank:not(.filled) { min-height: 1em; }
 .blank.filled {
@@ -269,7 +262,7 @@ function answer(val) {
 }
 .tap-zones {
   display: flex;
-  gap: 0;
+  gap: 10px;
   margin-top: 4px;
   min-height: 56px;
 }
@@ -282,141 +275,67 @@ function answer(val) {
   font-weight: 700;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: background 0.15s, transform 0.1s;
+  transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
   -webkit-tap-highlight-color: transparent;
 }
-.tap-zone:active { transform: scale(0.97); }
+.tap-zone:active { transform: scale(0.96); }
 .tap-zone.disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
   pointer-events: none;
 }
 .tap-wrong {
-  background: rgba(224, 92, 92, 0.15);
+  background: linear-gradient(160deg, rgba(224, 92, 92, 0.18), rgba(224, 92, 92, 0.08));
   color: var(--red);
-  margin-right: 6px;
+  border: 1px solid rgba(224, 92, 92, 0.25);
 }
-.tap-wrong:hover { background: rgba(224, 92, 92, 0.25); }
+.tap-wrong:hover {
+  background: linear-gradient(160deg, rgba(224, 92, 92, 0.28), rgba(224, 92, 92, 0.12));
+  box-shadow: 0 4px 16px rgba(224, 92, 92, 0.12);
+}
 .tap-correct {
-  background: rgba(76, 175, 130, 0.15);
+  background: linear-gradient(160deg, rgba(76, 175, 130, 0.18), rgba(76, 175, 130, 0.08));
   color: var(--green);
-  margin-left: 6px;
+  border: 1px solid rgba(76, 175, 130, 0.25);
 }
-.tap-correct:hover { background: rgba(76, 175, 130, 0.25); }
+.tap-correct:hover {
+  background: linear-gradient(160deg, rgba(76, 175, 130, 0.28), rgba(76, 175, 130, 0.12));
+  box-shadow: 0 4px 16px rgba(76, 175, 130, 0.12);
+}
 .tap-zone.selected-correct {
-  background: rgba(76, 175, 130, 0.35) !important;
+  background: linear-gradient(160deg, rgba(76, 175, 130, 0.38), rgba(76, 175, 130, 0.15)) !important;
   border: 2px solid var(--green) !important;
   color: var(--green) !important;
-  box-shadow: 0 0 0 2px rgba(76, 175, 130, 0.3);
+  box-shadow: 0 0 20px rgba(76, 175, 130, 0.15);
 }
 .tap-zone.selected-wrong {
-  background: rgba(224, 92, 92, 0.35) !important;
+  background: linear-gradient(160deg, rgba(224, 92, 92, 0.38), rgba(224, 92, 92, 0.15)) !important;
   border: 2px solid var(--red) !important;
   color: var(--red) !important;
-  box-shadow: 0 0 0 2px rgba(224, 92, 92, 0.3);
-}
-.swipe-hint {
-  font-size: 0.8rem;
-  color: var(--text3);
-  margin-top: 4px;
-  text-align: center;
+  box-shadow: 0 0 20px rgba(224, 92, 92, 0.15);
 }
 .swipe-card {
   display: flex;
   flex-direction: column;
   gap: 16px;
   border: 1px solid var(--border);
-  transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   min-height: 0;
 }
 .swipe-card.feedback-correct {
-  background: rgba(76, 175, 130, 0.12) !important;
+  background: linear-gradient(160deg, rgba(76, 175, 130, 0.18), rgba(76, 175, 130, 0.06) 60%) !important;
   border: 2px solid var(--green) !important;
+  box-shadow: 0 0 24px rgba(76, 175, 130, 0.12);
 }
 .swipe-card.feedback-wrong {
-  background: rgba(224, 92, 92, 0.15) !important;
+  background: linear-gradient(160deg, rgba(224, 92, 92, 0.18), rgba(224, 92, 92, 0.06) 60%) !important;
   border: 2px solid var(--red) !important;
+  box-shadow: 0 0 24px rgba(224, 92, 92, 0.12);
 }
 .swipe-card { touch-action: pan-x; }
 .card-stats { flex-shrink: 0; width: 100%; }
-.card-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: clamp(8px, 2.5vw, 14px);
-  flex-shrink: 0;
-}
-.toolbar-btn {
-  width: clamp(48px, 14vw, 64px);
-  height: clamp(48px, 14vw, 64px);
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  font-size: clamp(1.2rem, 5vw, 1.8rem);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-  transition: all 0.2s;
-  -webkit-tap-highlight-color: transparent;
-}
-.toolbar-btn:hover { border-color: var(--gold); color: var(--gold); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-.toolbar-btn:active { transform: translateY(0); }
-.toolbar-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .stage2-root {
   display: flex; flex-direction: column; min-height: 0;
 }
 .stage2-root .card { flex: 1; min-height: 0; position: relative; }
-.card.placeholder-only {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
-}
-.placeholder-warn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  background: rgba(224, 92, 92, 0.15);
-  border: 1px solid rgba(224, 92, 92, 0.4);
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  font-size: 0.9rem;
-  color: var(--red);
-}
-.placeholder-warn .placeholder-actions { flex: 0 0 auto; }
-.placeholder-actions { display: flex; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
-.btn-generate {
-  background: var(--surface2);
-  border: 1px solid var(--gold);
-  color: var(--gold);
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-  min-width: 120px;
-}
-.btn-generate:hover:not(:disabled) { background: rgba(201,168,76,0.2); border-color: var(--gold2); color: var(--gold2); }
-.btn-generate:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-skip {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-}
-.btn-skip:hover {
-  border-color: var(--gold);
-  color: var(--gold);
-}
 </style>

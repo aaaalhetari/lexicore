@@ -19,7 +19,3 @@ verify_jwt = false
 # Invoked by: run-card-jobs, make-card-content
 [functions.add-card-sound]
 verify_jwt = false
-
-# migrate-audio-structure: ترحيل بنية الصوتيات (مرة واحدة)
-[functions.migrate-audio-structure]
-verify_jwt = false

@@ -1,9 +1,9 @@
 /**
- * LexiCore v2: Session composable - backend-driven, weighted pick
+ * LexiCore v2: Session composable - backend-driven
  */
 
 import { ref, computed } from 'vue'
-import { getActivePool, submitAnswer, recordSession, getSettings } from '../store/data.js'
+import { getActivePool, submitAnswer, recordSession } from '../store/data.js'
 import { getWords, getWordById, normalizeWord, updateWordOptimistic } from '../store/realtime.js'
 
 /** Shuffle array in place (Fisher-Yates) */
@@ -144,7 +144,6 @@ export function useSession() {
     if (pool.length === 0) return 'done_today'
 
     const normalizedPool = pool.map(normalizeWord)
-    const poolIds = new Set(normalizedPool.map((w) => String(w.id)))
     const seenIds = new Set()
     const dedupedPool = normalizedPool.filter((w) => {
       const k = String(w.id)
@@ -153,13 +152,10 @@ export function useSession() {
       return true
     })
     const allWords = getWords()
-    const distractors = [...dedupedPool]
-    const extras = allWords.filter((w) => !poolIds.has(String(w.id)) && w.status !== 'mastered')
-    const poolSize = getSettings()?.new_words_per_session ?? 50
-    const minDistractors = 4
-    for (let i = 0; distractors.length < Math.max(poolSize, minDistractors) && i < extras.length; i++) {
-      distractors.push(extras[i])
-    }
+    const distractors = allWords
+      .filter((w) => (w.stage1_definitions ?? []).some((d) => d.is_correct))
+      .sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0))
+      .slice(0, 20)
 
     activeWords.value = dedupedPool
     sessionOrder.value = shuffleArray(dedupedPool)

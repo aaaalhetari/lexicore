@@ -1,58 +1,39 @@
 // LexiCore: Card generation cron (schedule: every hour)
-// 1. check_refill_needed: queue add_more_words + add_card_sound + make_card_content jobs per user
+// 1. check_card_jobs_needed: queue add_more_words + add_card_sound + make_card_content jobs per user
 // 2. run-card-jobs: drain jobs (Stage 1|2|3 content + audio)
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { corsHeaders } from "../_shared/cors.ts"
-
-const FUNCTIONS_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1`
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+import { createServiceClient } from "../_shared/supabase.ts"
+import { invokeEdgeFunction } from "../_shared/edge.ts"
+import { jsonErr, jsonOk, optionsOk } from "../_shared/http.ts"
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
+  if (req.method === "OPTIONS") return optionsOk()
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    )
+    const supabase = createServiceClient()
 
     const { data: users } = await supabase.from("user_settings").select("user_id")
     const userIds = (users ?? []).map((r) => r.user_id)
 
     for (const uid of userIds) {
       try {
-        await supabase.rpc("check_refill_needed", { p_user_id: uid })
+        await supabase.rpc("check_card_jobs_needed", { p_user_id: uid })
       } catch (e) {
-        console.warn("check_refill_needed for", uid, e?.message ?? e)
+        console.warn("check_card_jobs_needed for", uid, e?.message ?? e)
       }
     }
 
     let totalProcessed = 0
     for (let i = 0; i < 30; i++) {
-      const res = await fetch(`${FUNCTIONS_URL}/run-card-jobs`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${SERVICE_ROLE}`,
-        },
-        body: JSON.stringify({}),
-      })
-      const data = await res.json().catch(() => ({}))
+      const data = await invokeEdgeFunction("run-card-jobs", {})
       const processed = data?.processed ?? 0
       totalProcessed += processed
       if (processed === 0) break
     }
 
-    return new Response(
-      JSON.stringify({ users: userIds.length, totalProcessed }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    )
+    return jsonOk({ users: userIds.length, totalProcessed })
   } catch (err) {
     console.error(err)
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    )
+    return jsonErr(err, 500)
   }
 })

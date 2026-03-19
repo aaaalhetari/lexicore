@@ -1,26 +1,16 @@
 <template>
   <div class="stage1-root">
-    <div v-if="isPlaceholder" class="card placeholder-only">
-      <div class="card-toolbar">
-        <button class="toolbar-btn generate" :disabled="generating" @click="onMakeFullCard" title="Make full card">
-          {{ generating ? '⏳' : '☁️' }}
-        </button>
-        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
-        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
-          {{ isMuted ? '🔇' : '🔈' }}
-        </button>
-        <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
-      </div>
-      <div class="placeholder-warn">
-        <span>⚠️ Card content not generated yet.</span>
-        <div class="placeholder-actions">
-          <button class="btn-generate" :disabled="generating" @click="onMakeFullCard">
-            {{ generating ? '⏳ Generating…' : '☁️ Make full card' }}
-          </button>
-          <button class="btn-skip" :disabled="generating" @click="emit('skip')">Skip & continue →</button>
-        </div>
-      </div>
-    </div>
+    <StagePlaceholderCard
+      v-if="isPlaceholder"
+      :generating="generating"
+      :is-muted="isMuted"
+      :show-exit="!!sessionStats"
+      @generate="onMakeFullCard"
+      @play="onPlayClick"
+      @mute="toggleMute"
+      @exit="sessionStats?.onClose?.()"
+      @skip="emit('skip')"
+    />
     <div
       v-else
       class="card unified-card"
@@ -30,31 +20,30 @@
       <div v-if="sessionStats" class="card-stats">
         <SessionStatsBar :stats="sessionStats" />
       </div>
-      <div class="card-toolbar">
-        <button class="toolbar-btn generate" :disabled="generating" @click.stop="onMakeFullCard" title="Make full card">
-          {{ generating ? '⏳' : '☁️' }}
-        </button>
-        <button class="toolbar-btn play" @click.stop="onPlayClick" title="Play" :disabled="isMuted">🔊</button>
-        <button class="toolbar-btn mute" @click.stop="toggleMute" :title="isMuted ? 'Unmute' : 'Mute'">
-          {{ isMuted ? '🔇' : '🔈' }}
-        </button>
-        <button v-if="sessionStats" class="toolbar-btn exit" @click.stop="sessionStats.onClose?.()" title="Exit">✕</button>
-      </div>
-      <div class="definition-label">Choose the right meaning</div>
-      <div class="definition-text no-swipe-scroll definition-scroll">{{ currentDefinition }}</div>
-      <div class="choices-inline">
+      <StageCardToolbar
+        :generating="generating"
+        :is-muted="isMuted"
+        :show-exit="!!sessionStats"
+        @generate="onMakeFullCard"
+        @play="onPlayClick"
+        @mute="toggleMute"
+        @exit="sessionStats?.onClose?.()"
+      />
+      <div class="definition-label">Choose the right definition</div>
+      <div class="word-display">{{ word?.word }}</div>
+      <div class="choices-defs no-swipe-scroll">
         <button
-          v-for="choice in choices"
-          :key="choice.id"
+          v-for="(choice, ci) in choices"
+          :key="ci"
           class="choice-btn"
           :class="{
-            correct: answered && choice.id === word.id,
-            wrong: answered && chosen === choice.id && choice.id !== word.id,
+            correct: answered && choice.wordId === word.id,
+            wrong: answered && chosenIndex === ci && choice.wordId !== word.id,
           }"
           :disabled="answered"
-          @click.stop="answer(choice.id)"
+          @click.stop="answer(ci)"
         >
-          {{ choice.word }}
+          {{ choice.definition }}
         </button>
       </div>
     </div>
@@ -62,47 +51,32 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import { ref, computed, onUnmounted, watch, inject } from 'vue'
 import SessionStatsBar from '../SessionStatsBar.vue'
+import StageCardToolbar from './StageCardToolbar.vue'
+import StagePlaceholderCard from './StagePlaceholderCard.vue'
 import { useAudio } from '../../composables/useAudio.js'
 import { makeFullCard } from '../../store/data.js'
 import { refetchWord } from '../../store/realtime.js'
 import { getCurrentUser } from '../../store/sync.js'
 
-const props = defineProps({ word: Object, distractorPool: Array, feedback: Object, sessionStats: Object })
+const props = defineProps({
+  word: Object,
+  distractorPool: Array,
+  feedback: Object,
+  sessionStats: Object,
+})
 const emit = defineEmits(['answered', 'skip', 'content-generated'])
 
 const { playWord, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
 const answered = ref(false)
-const chosen = ref(null)
+const chosenIndex = ref(null)
 const generating = ref(false)
-
-const currentDefinitionItem = computed(() => {
-  const defs = props.word?.stage1_definitions ?? []
-  const idx = defs.findIndex((d) => d.is_correct)
-  return idx >= 0 ? { ...defs[idx], index: idx } : null
-})
-
-const currentDefinition = computed(() => {
-  const item = currentDefinitionItem.value
-  const text = (item?.definition ?? props.word?.definition ?? '').trim()
-  return text || `Definition for "${props.word?.word ?? 'this word'}"`
-})
-
-const definitionAudioUrl = computed(() => {
-  const idx = currentDefinitionItem.value?.index ?? -1
-  if (idx >= 0) {
-    const arr = props.word?.audio_stage1_definitions ?? []
-    const url = Array.isArray(arr) ? arr[idx] : null
-    if (url) return url
-  }
-  return null
-})
+const choices = ref([])
 
 const isPlaceholder = computed(() => {
-  const def = currentDefinition.value
-  const w = props.word?.word ?? 'this word'
-  return def === `Definition for "${w}"`
+  const defs = props.word?.stage1_definitions ?? []
+  return !defs.some((d) => d.is_correct)
 })
 
 function shuffle(arr) {
@@ -114,44 +88,61 @@ function shuffle(arr) {
   return a
 }
 
-const choices = ref([])
-
 function buildChoices() {
   if (!props.word) return
-  const distractors = (props.distractorPool ?? [])
-    .filter((w) => w.id !== props.word?.id)
-    .slice()
-  shuffle(distractors)
-  choices.value = shuffle([props.word, ...distractors.slice(0, 3)])
+  const defs = props.word.stage1_definitions ?? []
+  const correctDefs = defs.filter((d) => d.is_correct)
+  if (!correctDefs.length) return
+
+  const correctDef = correctDefs[Math.floor(Math.random() * correctDefs.length)]
+  const correctChoice = { wordId: props.word.id, definition: correctDef.definition }
+
+  const candidates = (props.distractorPool ?? []).filter(
+    (w) => w.id !== props.word.id && w.stage1_definitions?.some((d) => d.is_correct),
+  )
+
+  const picked = []
+  const pool = shuffle(candidates)
+  for (let i = 0; i < 3 && pool.length > 0; i++) {
+    const w = pool[i]
+    const wDefs = (w.stage1_definitions ?? []).filter((d) => d.is_correct)
+    const def =
+      wDefs.length > 0
+        ? wDefs[Math.floor(Math.random() * wDefs.length)]
+        : { definition: w.definition || 'Unknown' }
+    picked.push({ wordId: w.id, definition: def.definition || w.definition || 'Unknown' })
+  }
+
+  choices.value = shuffle([correctChoice, ...picked])
 }
 
 watch(() => props.word?.id, () => buildChoices(), { immediate: true })
 
 function playCardAudio() {
-  if (isMuted.value) return
+  if (isMuted.value || !props.word) return
   stopAudio()
-  if (definitionAudioUrl.value) playStoredAudio(definitionAudioUrl.value, 2)
+  if (props.word.audio_word) playStoredAudio(props.word.audio_word, 5)
 }
 
-watch(() => props.sessionStats, (stats, prev) => {
-  if (stats && !prev) playCardAudio()
-  if (!stats && prev) stopAudio()
-}, { immediate: true })
+watch(
+  () => props.sessionStats,
+  (stats, prev) => {
+    if (stats && !prev) playCardAudio()
+    if (!stats && prev) stopAudio()
+  },
+  { immediate: true },
+)
 
 onUnmounted(() => stopAudio())
 
 function onCardTap() {
-  if (isMuted.value) return
-  if (definitionAudioUrl.value) playStoredAudio(definitionAudioUrl.value, 2)
+  if (isMuted.value || !props.word) return
+  if (props.word.audio_word) playStoredAudio(props.word.audio_word, 5)
 }
 
 function onPlayClick() {
-  if (isMuted.value) return
-  if (answered.value && props.word?.audio_word) {
-    playWord(props.word, 5)
-  } else if (definitionAudioUrl.value) {
-    playStoredAudio(definitionAudioUrl.value, 2)
-  }
+  if (isMuted.value || !props.word) return
+  if (props.word.audio_word) playStoredAudio(props.word.audio_word, 5)
 }
 
 async function onMakeFullCard() {
@@ -167,7 +158,6 @@ async function onMakeFullCard() {
     await new Promise((r) => setTimeout(r, 800))
     await refetchWord(props.word.id, user.id)
     emit('content-generated', props.word.id)
-    if (definitionAudioUrl.value && !isMuted.value) playStoredAudio(definitionAudioUrl.value, 2)
   } catch (e) {
     alert('Generate failed: ' + (e?.message || e))
   } finally {
@@ -175,13 +165,14 @@ async function onMakeFullCard() {
   }
 }
 
-function answer(id) {
+function answer(index) {
   if (answered.value) return
   stopAudio()
   answered.value = true
-  chosen.value = id
+  chosenIndex.value = index
+  const choice = choices.value[index]
   playWord(props.word, 5)
-  emit('answered', id === props.word.id)
+  emit('answered', choice.wordId === props.word.id)
 }
 </script>
 
@@ -191,150 +182,96 @@ function answer(id) {
   flex-direction: column;
   gap: 14px;
   border: 1px solid var(--border);
-  transition: background 0.25s ease, border-color 0.25s ease, border-width 0.2s ease;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   min-height: 0;
 }
-.card-stats { flex-shrink: 0; width: 100%; }
-.card-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: clamp(8px, 2.5vw, 14px);
+.card-stats {
   flex-shrink: 0;
+  width: 100%;
 }
-.toolbar-btn {
-  width: clamp(48px, 14vw, 64px);
-  height: clamp(48px, 14vw, 64px);
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  color: var(--text2);
-  font-size: clamp(1.2rem, 5vw, 1.8rem);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-  transition: all 0.2s;
-  -webkit-tap-highlight-color: transparent;
-}
-.toolbar-btn:hover { border-color: var(--gold); color: var(--gold); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-.toolbar-btn:active { transform: translateY(0); }
-.toolbar-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.toolbar-btn.exit { order: 4; }
-.toolbar-btn.mute { order: 3; }
-.toolbar-btn.play { order: 2; }
-.toolbar-btn.generate { order: 1; }
 .unified-card.feedback-correct {
-  background: rgba(76, 175, 130, 0.12) !important;
+  background: linear-gradient(160deg, rgba(76, 175, 130, 0.18), rgba(76, 175, 130, 0.06) 60%) !important;
   border: 2px solid var(--green) !important;
+  box-shadow: 0 0 24px rgba(76, 175, 130, 0.12);
 }
 .unified-card.feedback-wrong {
-  background: rgba(224, 92, 92, 0.15) !important;
+  background: linear-gradient(160deg, rgba(224, 92, 92, 0.18), rgba(224, 92, 92, 0.06) 60%) !important;
   border: 2px solid var(--red) !important;
+  box-shadow: 0 0 24px rgba(224, 92, 92, 0.12);
 }
-.choices-inline {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 8px;
+
+.word-display {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.8rem, 2.4vmin + 1rem, 2.8rem);
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--gold2), var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-align: center;
+  padding: 10px 0;
   flex-shrink: 0;
+  letter-spacing: 0.02em;
 }
+
+.choices-defs {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
 .choice-btn {
-  background: var(--surface2);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.025), transparent 40%), var(--surface2);
   border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 12px 14px;
+  padding: 14px 16px;
   min-height: 44px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   text-align: left;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
   color: var(--text);
   overflow-wrap: anywhere;
   word-break: break-word;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 .choice-btn:hover:not(:disabled) {
   border-color: var(--gold);
-  background: var(--gold-dim);
+  background: linear-gradient(160deg, rgba(210, 177, 90, 0.12), transparent 50%), var(--surface2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.choice-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 .choice-btn.correct {
   border-color: var(--green) !important;
-  background: var(--green-dim) !important;
+  background: linear-gradient(160deg, rgba(76, 175, 130, 0.2), rgba(76, 175, 130, 0.08) 60%) !important;
   color: var(--green);
+  box-shadow: 0 0 16px rgba(76, 175, 130, 0.1);
 }
 .choice-btn.wrong {
   border-color: var(--red) !important;
-  background: var(--red-dim) !important;
+  background: linear-gradient(160deg, rgba(224, 92, 92, 0.2), rgba(224, 92, 92, 0.08) 60%) !important;
   color: var(--red);
+  box-shadow: 0 0 16px rgba(224, 92, 92, 0.1);
 }
 .choice-btn:disabled {
   cursor: default;
 }
 .stage1-root {
-  display: flex; flex-direction: column; min-height: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .stage1-root .card {
   flex: 1;
   min-height: 0;
   cursor: pointer;
-}
-.definition-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-.card.placeholder-only {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 200px;
-}
-.placeholder-warn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  background: rgba(224, 92, 92, 0.15);
-  border: 1px solid rgba(224, 92, 92, 0.4);
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  margin-bottom: 12px;
-  font-size: 0.9rem;
-  color: var(--red);
-}
-.placeholder-warn .placeholder-actions { flex: 0 0 auto; }
-.placeholder-actions { display: flex; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
-.btn-generate {
-  background: var(--surface2);
-  border: 1px solid var(--gold);
-  color: var(--gold);
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-  min-width: 120px;
-}
-.btn-generate:hover:not(:disabled) { background: rgba(201,168,76,0.2); border-color: var(--gold2); color: var(--gold2); }
-.btn-generate:disabled { opacity: 0.6; cursor: not-allowed; }
-.btn-skip {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 0.9rem;
-  cursor: pointer;
-  font-family: 'DM Sans', sans-serif;
-}
-.btn-skip:hover {
-  border-color: var(--gold);
-  color: var(--gold);
 }
 </style>

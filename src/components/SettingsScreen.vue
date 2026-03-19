@@ -1,5 +1,13 @@
 <template>
-  <div>
+  <div class="settings-page">
+    <!-- Page Header -->
+    <div class="page-bar">
+      <button class="back-btn" @click="cancel" title="Back">
+        <span class="back-arrow">←</span> Settings
+      </button>
+      <button class="btn btn-primary save-btn" :disabled="saving" @click="save">{{ saving ? 'Saving…' : '✓ Save' }}</button>
+    </div>
+
     <!-- Tabs -->
     <div class="nav-tabs">
       <button class="nav-tab" :class="{ active: tab === 'general' }" @click="tab = 'general'">General</button>
@@ -9,18 +17,7 @@
 
     <!-- General -->
     <div v-if="tab === 'general'">
-      <div class="settings-section">
-        <h3>Session</h3>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Total words for today session (learning + new)</div>
-            <div class="setting-desc">Max words per session. Shown as "Available Today X of Y/session" on home.</div>
-            <div class="setting-counter">Home shows: <strong>Available Today {{ stats.eligibleToday ?? 0 }}</strong> of <strong>{{ local.new_words_per_session ?? 50 }}</strong>/session</div>
-          </div>
-          <input class="setting-input" type="number" min="1" max="50" v-model.number="local.new_words_per_session" placeholder="50">
-        </div>
-      </div>
-      <div class="settings-section">
+      <div class="settings-section card">
         <h3>Waiting target</h3>
         <div class="setting-row">
           <div>
@@ -39,7 +36,7 @@
           <input class="setting-input" type="number" min="10" max="100" v-model.number="local.waiting_target" placeholder="50">
         </div>
       </div>
-      <div class="settings-section">
+      <div class="settings-section card">
         <h3>Progress File</h3>
         <div class="setting-row">
           <div><div class="setting-label">Upload JSON</div><div class="setting-desc">Restore progress from another device</div></div>
@@ -53,23 +50,11 @@
           <button class="btn btn-secondary small-btn" @click="downloadJSON()">⬇ Download</button>
         </div>
       </div>
-      <div class="settings-section">
-        <h3>Maintenance</h3>
-        <div class="setting-row">
-          <div>
-            <div class="setting-label">Migrate audio structure</div>
-            <div class="setting-desc">Move audio to all-lexicore-audio/{word}/, delete tts cache. Run once.</div>
-          </div>
-          <button class="btn btn-secondary small-btn" :disabled="migrating" @click="onMigrateAudio">
-            {{ migrating ? '⏳ Migrating…' : '🔄 Migrate' }}
-          </button>
-        </div>
-      </div>
     </div>
 
     <!-- Cycles -->
     <div v-if="tab === 'cycles'">
-      <div v-for="c in [1,2,3]" :key="c" class="settings-section">
+      <div v-for="c in [1,2,3]" :key="c" class="settings-section card">
         <h3>Cycle {{ c }} — Day {{ c }}</h3>
         <div v-for="s in [1,2,3]" :key="s" class="setting-row">
           <div><div class="setting-label">Stage {{ s }} required</div></div>
@@ -79,7 +64,7 @@
     </div>
 
     <!-- Account / Sync -->
-    <div v-if="tab === 'account'" class="settings-section">
+    <div v-if="tab === 'account'" class="settings-section card">
       <h3>Sync across devices</h3>
       <p class="sync-desc">Sign in to sync progress and settings across computer, phone, and tablet.</p>
       <template v-if="!hasSync">
@@ -99,17 +84,12 @@
       </template>
     </div>
 
-    <!-- Sticky Buttons -->
-    <div class="sticky-bottom">
-      <button class="btn btn-primary" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save & Back' }}</button>
-      <button class="btn btn-secondary" :disabled="saving" @click="cancel">Back without Saving</button>
-    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { getSettings, getStats, updateSettings, refreshSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON, migrateAudioStructure } from '../store/data.js'
+import { getSettings, getStats, updateSettings, refreshSettings, snapshotSettings, restoreSettings, importJSON, downloadJSON } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser, signInWithGitHub, signOut } from '../store/sync.js'
 
@@ -123,20 +103,6 @@ const hasSync = hasSupabase()
 const user = ref(null)
 const authError = ref('')
 const saving = ref(false)
-const migrating = ref(false)
-
-async function onMigrateAudio() {
-  if (!hasSync || migrating.value) return
-  migrating.value = true
-  try {
-    const r = await migrateAudioStructure()
-    alert(`Migrated: ${r?.migrated ?? 0} files, deleted ${r?.tts_deleted ?? 0} tts, updated ${r?.vocabulary_updated ?? 0} words`)
-  } catch (e) {
-    alert('Migration failed: ' + (e?.message ?? e))
-  } finally {
-    migrating.value = false
-  }
-}
 
 onMounted(async () => {
   if (hasSync) user.value = await getCurrentUser()
@@ -144,7 +110,6 @@ onMounted(async () => {
 
 // Local copy of settings for editing
 const local = reactive({
-  new_words_per_session: 50,
   new_words_per_day: 25,
   waiting_target: 50,
   cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
@@ -156,7 +121,6 @@ onMounted(async () => {
   await refreshSettings()
   snapshot.value = snapshotSettings()
   const s = getSettings()
-  local.new_words_per_session = s.new_words_per_session ?? 50
   local.new_words_per_day = s.new_words_per_day ?? 25
   local.waiting_target = s.waiting_target ?? s.reservoir ?? 10
   for (let c = 1; c <= 3; c++) {
@@ -181,7 +145,6 @@ async function save() {
 function cancel() {
   const restored = restoreSettings(snapshot.value)
   if (restored) {
-    local.new_words_per_session = restored.new_words_per_session ?? restored.pool_size ?? 20
     local.new_words_per_day = restored.new_words_per_day ?? 25
     local.waiting_target = restored.waiting_target ?? restored.reservoir ?? 10
     for (let c = 1; c <= 3; c++) {
@@ -225,27 +188,48 @@ async function handleSignOut() {
 </script>
 
 <style scoped>
+.settings-page {
+  padding-bottom: calc(var(--sp) * 2);
+}
+
 .nav-tabs {
-  display: flex; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 4px; gap: 4px; margin-bottom: 24px;
+  display: flex;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.02), transparent 35%), var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px;
+  gap: 5px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow-sm);
 }
 .nav-tab {
-  flex: 1; padding: 9px; border-radius: var(--radius-sm);
-  text-align: center; font-size: 0.95rem; cursor: pointer;
-  transition: all 0.2s; color: var(--text2); border: none; background: none;
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text2);
+  border: none;
+  background: none;
   font-family: 'DM Sans', sans-serif;
 }
-.nav-tab.active { background: var(--surface3); color: var(--text); }
+.nav-tab.active {
+  background: linear-gradient(140deg, rgba(210, 177, 90, 0.2), rgba(210, 177, 90, 0.06));
+  color: var(--text);
+}
 
-.settings-section { margin-bottom: 28px; }
+.settings-section { margin-bottom: 14px; }
 .settings-section h3 {
   font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;
   color: var(--text3); font-family: 'JetBrains Mono', monospace;
-  margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
 }
 .setting-row {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 0; border-bottom: 1px solid var(--border);
+  gap: 10px;
+  padding: 12px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .setting-row:last-child { border-bottom: none; }
 .setting-label { font-size: 1rem; }
@@ -270,5 +254,17 @@ async function handleSignOut() {
 .auth-form { display: flex; flex-direction: column; gap: 10px; max-width: 280px; }
 .github-btn { width: 100%; }
 .auth-error { font-size: 0.9rem; color: var(--red); margin-top: 4px; }
+
+@media (max-width: 420px) {
+  .setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .setting-input {
+    width: 100%;
+    max-width: 110px;
+  }
+}
 
 </style>

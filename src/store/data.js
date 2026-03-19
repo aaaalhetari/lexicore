@@ -42,7 +42,7 @@ export async function submitAnswer(wordId, isCorrect) {
   return data
 }
 
-/** Get active pool from backend (count from user_settings.new_words_per_session, stage-aware) */
+/** Get active pool from backend (stage-aware) */
 export async function getActivePool() {
   if (!hasSupabase()) return []
   const { data: { user } } = await supabase.auth.getUser()
@@ -79,7 +79,6 @@ export async function updateSettings(settings) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  const wordsPerSession = Number(settings.new_words_per_session) || 50
   const newWordsPerDay = Number(settings.new_words_per_day) || 25
   const reservoirVal = Number(settings.waiting_target) || 50
 
@@ -94,7 +93,6 @@ export async function updateSettings(settings) {
 
   const { data: result, error } = await supabase.rpc('update_settings_with_trim', {
     p_user_id: user.id,
-    p_new_words_per_session: wordsPerSession,
     p_new_words_per_day: newWordsPerDay,
     p_waiting_target: reservoirVal,
     p_cycle_1: settings.cycle_1,
@@ -138,14 +136,6 @@ export async function assignDailyQuota(userId) {
   }
 }
 
-/** Migrate audio from old path (wordId-word) to new (word). Run once. See docs/MIGRATE_AUDIO.md */
-export async function migrateAudioStructure() {
-  if (!hasSupabase()) throw new Error('Supabase required')
-  const { data, error } = await supabase.functions.invoke('migrate-audio-structure', { body: {} })
-  if (error) throw error
-  return data
-}
-
 /** Request full card generation from server (single button on any stage card).
  * One call: content (Stage 1+2+3) + audio. Works for empty or refresh. */
 export async function makeFullCard(userId, wordId, word) {
@@ -168,10 +158,9 @@ export async function makeFullCard(userId, wordId, word) {
 /** Get AI explanation for Stage 3 (fallback when not in DB) */
 export async function explainSentence(userId, word, sentence, isCorrect) {
   if (!hasSupabase()) return null
-  const { data, error } = await supabase.functions.invoke('make-card-content', {
+  const { data, error } = await supabase.functions.invoke('explain-card-sentence', {
     body: {
       user_id: userId || '',
-      job_type: 'explain_sentence',
       word,
       sentence,
       is_correct: isCorrect,

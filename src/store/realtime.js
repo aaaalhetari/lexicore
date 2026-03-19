@@ -3,7 +3,7 @@
  * Subscribes to vocabulary table, updates word-by-word
  */
 
-import { reactive, shallowRef } from 'vue'
+import { reactive } from 'vue'
 import { supabase, hasSupabase } from '../lib/supabase.js'
 
 const state = reactive({
@@ -23,6 +23,14 @@ let onlineHandler = null
 function sameId(a, b) {
   if (a == null || b == null) return false
   return String(a) === String(b) || Number(a) === Number(b)
+}
+
+function sameSessionRow(a, b) {
+  if (!a || !b) return false
+  // Prefer PK match when id exists.
+  if (a.id != null && b.id != null) return sameId(a.id, b.id)
+  // Fallback for upsert-by-date shape (user_id,date).
+  return String(a.user_id ?? '') === String(b.user_id ?? '') && String(a.date ?? '') === String(b.date ?? '')
 }
 
 export function getWords() {
@@ -67,11 +75,10 @@ export function getStats() {
     const c3 = String(w.cycle_3_completed_date ?? '').slice(0, 10)
     return c1 !== todayStr && c2 !== todayStr && c3 !== todayStr
   }).length
-  const sessionLimit = state.settings?.new_words_per_session ?? 50
   const reservoir = state.settings?.waiting_target ?? 50
   const newWordsPerDay = state.settings?.new_words_per_day ?? 25
   const newWordsInLearningToday = learningToday
-  return { total, mastered, learning, learningToday, learningBeforeToday, newWord, waiting, todayAnswered, eligibleToday, sessionLimit, waiting_target: reservoir, newWordsPerDay, newWordsInLearningToday }
+  return { total, mastered, learning, learningToday, learningBeforeToday, newWord, waiting, todayAnswered, eligibleToday, waiting_target: reservoir, newWordsPerDay, newWordsInLearningToday }
 }
 
 export function today() {
@@ -116,7 +123,6 @@ async function fetchSettings(userId) {
 
   state.settings = settingsRow
     ? {
-        new_words_per_session: settingsRow.new_words_per_session ?? 50,
         new_words_per_day: settingsRow.new_words_per_day ?? 25,
         waiting_target: settingsRow.waiting_target ?? 50,
         cycle_1: settingsRow.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
@@ -124,7 +130,6 @@ async function fetchSettings(userId) {
         cycle_3: settingsRow.cycle_3 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       }
     : {
-        new_words_per_session: 50,
         new_words_per_day: 25,
         waiting_target: 50,
         cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
@@ -185,8 +190,10 @@ export async function subscribeRealtime(userId) {
   currentUserId = userId ?? null
 
   if (!hasSupabase() || !userId) {
+    // Keep store deterministic after sign-out / missing config.
+    state.words = []
+    state.sessions = []
     state.settings = {
-      new_words_per_session: 50,
       new_words_per_day: 25,
       waiting_target: 50,
       cycle_1: { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
@@ -279,7 +286,6 @@ function handleSettingsChange(payload) {
   const { eventType, new: newRow } = payload
   if (eventType === 'DELETE' || !newRow) return
   state.settings = {
-    new_words_per_session: newRow.new_words_per_session ?? 50,
     new_words_per_day: newRow.new_words_per_day ?? 25,
     waiting_target: newRow.waiting_target ?? 50,
     cycle_1: newRow.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
@@ -291,7 +297,7 @@ function handleSettingsChange(payload) {
 function handleSessionsChange(payload) {
   const { eventType, new: newRow, old: oldRow } = payload
   if (eventType === 'INSERT' || eventType === 'UPDATE') {
-    const idx = state.sessions.findIndex((s) => sameId(s.id, newRow.id))
+    const idx = state.sessions.findIndex((s) => sameSessionRow(s, newRow))
     if (idx >= 0) {
       state.sessions.splice(idx, 1, newRow)
     } else {
@@ -301,7 +307,7 @@ function handleSessionsChange(payload) {
       .sort((a, b) => String(b.date ?? '').localeCompare(String(a.date ?? '')))
       .slice(0, 365)
   } else if (eventType === 'DELETE') {
-    state.sessions = state.sessions.filter((s) => !sameId(s.id, oldRow.id))
+    state.sessions = state.sessions.filter((s) => !sameSessionRow(s, oldRow))
   }
 }
 
@@ -422,9 +428,8 @@ export async function refetchSettings(userId) {
     .maybeSingle()
   if (data) {
     state.settings = {
-      new_words_per_session: data.new_words_per_session ?? 50,
       new_words_per_day: data.new_words_per_day ?? 25,
-        waiting_target: data.waiting_target ?? 50,
+      waiting_target: data.waiting_target ?? 50,
       cycle_1: data.cycle_1 ?? { stage_1_required: 4, stage_2_required: 4, stage_3_required: 4 },
       cycle_2: data.cycle_2 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },
       cycle_3: data.cycle_3 ?? { stage_1_required: 2, stage_2_required: 2, stage_3_required: 2 },

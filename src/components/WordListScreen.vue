@@ -1,7 +1,14 @@
 <template>
-  <div>
+  <div class="words-page">
+    <!-- Page Header -->
+    <div class="page-bar">
+      <button class="back-btn" @click="$emit('back')" title="Back">
+        <span class="back-arrow">←</span> Word List
+      </button>
+    </div>
+
     <!-- File Actions -->
-    <div class="file-actions">
+    <div class="file-actions card">
       <label class="btn btn-secondary" style="cursor:pointer">
         ⬆ Import CSV
         <input type="file" accept=".csv" @change="onImportCSV" style="display:none">
@@ -10,10 +17,10 @@
     </div>
 
     <!-- Word List -->
-    <div v-if="words.length === 0" class="empty-msg">
+    <div v-if="words.length === 0" class="empty-msg card">
       No words yet. Import a CSV or sign in for server-generated words.
     </div>
-    <div v-else class="word-list" style="padding-bottom:80px">
+    <div v-else class="word-list">
       <div v-for="w in words" :key="w.id" class="word-item">
         <div>
           <div class="w-name">{{ w.word }}</div>
@@ -23,11 +30,6 @@
       </div>
     </div>
 
-    <!-- Sticky Buttons -->
-    <div class="sticky-bottom">
-      <button class="btn btn-primary" @click="saveAndBack">Export & Back</button>
-      <button class="btn btn-secondary" @click="$emit('back')">Back without Saving</button>
-    </div>
   </div>
 </template>
 
@@ -65,22 +67,40 @@ async function onImportCSV(e) {
   reader.readAsText(file)
 }
 
-function saveAndBack() {
-  downloadJSON()
-  emit('back')
-}
 </script>
 
 <style scoped>
-.file-actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.words-page {
+  padding-bottom: calc(var(--sp) * 2);
+}
 
-.empty-msg { color: var(--text3); text-align: center; padding: 32px; }
+.file-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
 
-.word-list { display: flex; flex-direction: column; gap: 10px; }
+.empty-msg {
+  color: var(--text3);
+  text-align: center;
+  padding: 22px;
+}
+
+.word-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 80px;
+}
 .word-item {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 14px 18px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.02), transparent 35%), var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
   display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  box-shadow: var(--shadow-sm);
 }
 .w-name { font-family: 'JetBrains Mono', monospace; font-size: 1.05rem; color: var(--gold); }
 .w-def  { font-size: 0.95rem; color: var(--text2); margin-top: 3px; }
@@ -93,4 +113,11 @@ function saveAndBack() {
 .ws-learning-today { background: rgba(92,158,224,0.2); color: var(--blue); }
 .ws-learning { background: rgba(92,158,224,0.12); color: var(--blue); }
 .ws-mastered { background: var(--green-dim); color: var(--green); }
+
+@media (max-width: 420px) {
+  .file-actions :deep(.btn) {
+    flex: 1;
+    min-width: 130px;
+  }
+}
 </style>

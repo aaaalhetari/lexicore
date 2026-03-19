@@ -49,17 +49,17 @@
 
     <!-- ACTIVE QUESTION - Swiper owns the full carousel -->
     <div v-else-if="phase === 'question' && currentWord" class="session-question-wrap">
-      <div class="session-content">
+      <div class="session-content" @wheel.capture="onSessionWheel">
+        <!-- Vertical one-card navigation; long text uses .no-swipe-scroll areas -->
         <Swiper
           :key="'swiper-' + displayOrder.length"
-          :modules="[FreeMode, Mousewheel]"
+          :modules="[Mousewheel]"
           class="session-swiper"
           direction="vertical"
           :slides-per-view="1"
           :space-between="16"
           :initial-slide="displayIndex"
           :speed="320"
-          :free-mode="false"
           :simulate-touch="true"
           :allow-touch-move="true"
           :mousewheel="{
@@ -125,9 +125,8 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { Swiper, SwiperSlide } from 'swiper/vue'
-import { FreeMode, Mousewheel } from 'swiper/modules'
+import { Mousewheel } from 'swiper/modules'
 import 'swiper/css'
-import 'swiper/css/free-mode'
 import { useSession } from '../composables/useSession.js'
 import { useAudio } from '../composables/useAudio.js'
 import { getData, getStats, downloadJSON, preloadTTS, explainSentence } from '../store/data.js'
@@ -143,18 +142,10 @@ const sessionAudio = useAudio()
 provide('sessionAudio', sessionAudio)
 
 const {
-  activeWords, sessionOrder, currentIndex, displayOrder, displayIndex, prevWord, nextWord,
-  distractorPool, progressPct, remaining, totalAtStart,
-  correct, answeredCount, currentWord, sessionDone,
+  displayOrder, displayIndex, distractorPool, remaining, totalAtStart,
+  correct, answeredCount, currentWord,
   startSession, handleAnswer, advance, advanceToDisplayIndex, getS3Type, syncWordFromStore,
 } = useSession()
-
-const completedCount = computed(() => Math.max(0, (totalAtStart?.value ?? 0) - (remaining?.value ?? 0)))
-const accuracyPct = computed(() => {
-  const ans = answeredCount?.value ?? 0
-  const cor = correct?.value ?? 0
-  return ans > 0 ? Math.round((cor / ans) * 100) : 0
-})
 
 const phase       = ref('idle')
 const feedback    = ref(null)
@@ -189,9 +180,6 @@ const sessionStats = computed(() => {
     displayRequired: displayRequired.value,
     cycle: (displayWord.value ?? currentWord.value)?.cycle,
     stage: (displayWord.value ?? currentWord.value)?.stage,
-    todayAnswered: (stats.value?.todayAnswered ?? 0) + ans,
-    eligibleToday: stats.value?.eligibleToday ?? 0,
-    sessionLimit: stats.value?.sessionLimit ?? 50,
     onClose: () => { sessionAudio.stopAudio(); emit('end') },
   }
 })
@@ -216,6 +204,33 @@ function onSwiper(swiper) {
 
 function onSwiperTouchStart() {
   if (feedback.value) sessionAudio.stopAudio()
+}
+
+function onSessionWheel(event) {
+  const target = event?.target
+  if (!(target instanceof Element)) return
+  // Wheel logic:
+  // - If cursor is over a long-text box (.no-swipe-scroll), scroll text first.
+  // - At top/bottom edge (or when text is short), let Swiper handle wheel for card navigation.
+  const scrollBox = target.closest('.no-swipe-scroll')
+  if (!scrollBox) return
+  const scrollHeight = scrollBox.scrollHeight
+  const clientHeight = scrollBox.clientHeight
+  const canScrollInside = scrollHeight - clientHeight > 1
+  if (!canScrollInside) return
+
+  const deltaY = Number(event.deltaY) || 0
+  if (deltaY === 0) return
+  const atTop = scrollBox.scrollTop <= 0
+  const atBottom = scrollBox.scrollTop + clientHeight >= scrollHeight - 1
+  const movingDown = deltaY > 0
+  const movingUp = deltaY < 0
+  const shouldPassToSwiper = (movingDown && atBottom) || (movingUp && atTop)
+  if (shouldPassToSwiper) return
+
+  scrollBox.scrollTop += deltaY
+  event.preventDefault()
+  event.stopPropagation()
 }
 
 function doNextCleanup() {
@@ -381,23 +396,6 @@ async function onContentGenerated(wordId) {
   contentRefreshKey.value++
 }
 
-function next() {
-  if (nextLock.value) return
-  nextLock.value = true
-  doNextCleanup()
-  const hasMore = advance()
-  if (!hasMore) { phase.value = 'end'; nextLock.value = false; return }
-  learningTargetIndex.value = displayIndex.value
-  if (swiperRef.value && !swiperRef.value.destroyed) {
-    swiperRef.value.slideTo(displayIndex.value)
-  }
-  preloadTTS(currentWord.value)
-  questionKey.value++
-  if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
-  phase.value = 'question'
-  nextTick(() => { nextLock.value = false })
-}
-
 function onSkip() {
   if (nextLock.value) return
   nextLock.value = true
@@ -428,24 +426,6 @@ function onSkip() {
   flex: 1; min-height: 0; height: 100%; overflow: hidden;
   display: flex; flex-direction: column;
 }
-.stage-transition-wrap {
-  flex: 1;
-  min-height: min(560px, 80vh);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--sp);
-  width: 100%;
-  position: relative;
-}
-.stage-transition-wrap > * {
-  flex: 1; min-height: 0;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  width: 100%;
-}
 .session-content :deep(.card) {
   width: 100%;
   max-width: 100%;
@@ -467,6 +447,8 @@ function onSkip() {
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+  pointer-events: auto;
+  scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   touch-action: pan-y;
@@ -539,20 +521,67 @@ function onSkip() {
   transform: translateX(0);
 }
 
-.big-emoji { font-size: calc(var(--icon) * 2.2); margin-bottom: calc(var(--sp) * 0.8); }
+.big-emoji { font-size: calc(var(--icon) * 2.5); margin-bottom: calc(var(--sp) * 1); }
 
-.idle-msg { text-align: center; padding: calc(var(--sp) * 3) 0; }
-.idle-msg h2 { font-family: 'Fraunces', serif; font-size: 1.7rem; color: var(--gold2); margin-bottom: 12px; }
-.idle-msg p { color: var(--text2); }
-.error-detail { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--red); margin: 12px 0; }
+.idle-msg {
+  text-align: center;
+  padding: calc(var(--sp) * 3) calc(var(--sp) * 1.2);
+}
+.idle-msg h2 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.5rem, 1.4vmin + 1rem, 2rem);
+  background: linear-gradient(135deg, var(--gold2), var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 14px;
+}
+.idle-msg p { color: var(--text2); line-height: 1.55; }
+.error-detail {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  color: var(--red);
+  margin: 14px 0;
+  padding: 10px 14px;
+  background: linear-gradient(160deg, rgba(224, 92, 92, 0.1), transparent 50%);
+  border: 1px solid rgba(224, 92, 92, 0.2);
+  border-radius: var(--radius-sm);
+}
 .error-hint { font-size: 0.9rem; color: var(--text3); }
 
-.session-end { text-align: center; padding: calc(var(--sp) * 2.4) 0; }
-.session-end h2 { font-family: 'Fraunces', serif; font-size: 2.1rem; color: var(--gold2); margin-bottom: 12px; }
-.session-end p { color: var(--text2); margin-bottom: 28px; }
-.end-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: var(--sp); margin-bottom: calc(var(--sp) * 2); }
-.end-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: calc(var(--sp) * 1.2) calc(var(--sp) * 0.9); }
-.end-stat .num { font-family: 'JetBrains Mono', monospace; font-size: 1.9rem; color: var(--gold); }
-.end-stat .lbl { font-size: 0.85rem; color: var(--text3); margin-top: 4px; }
+.session-end {
+  text-align: center;
+  padding: calc(var(--sp) * 2.4) calc(var(--sp) * 1.2);
+}
+.session-end h2 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.7rem, 2vmin + 1rem, 2.5rem);
+  background: linear-gradient(135deg, var(--gold2), var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 14px;
+}
+.session-end p { color: var(--text2); margin-bottom: 28px; line-height: 1.55; }
+.end-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp);
+  margin-bottom: calc(var(--sp) * 2);
+}
+.end-stat {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.03), transparent 35%), var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: calc(var(--sp) * 1.3) calc(var(--sp) * 1);
+  box-shadow: var(--shadow-sm);
+}
+.end-stat .num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(1.5rem, 2vmin + 0.8rem, 2.2rem);
+  background: linear-gradient(135deg, var(--gold2), var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 700;
+}
+.end-stat .lbl { font-size: 0.82rem; color: var(--text3); margin-top: 6px; }
 
 </style>
