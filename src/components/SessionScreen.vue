@@ -58,16 +58,23 @@
           :slides-per-view="1"
           :space-between="16"
           :initial-slide="displayIndex"
-          :speed="440"
-          :touch-ratio="0.9"
+          :speed="460"
+          :touch-ratio="0.86"
           :short-swipes="true"
-          :free-mode="false"
+          :free-mode="{
+            enabled: true,
+            sticky: true,
+            momentum: true,
+            momentumBounce: false,
+            momentumRatio: 0.58,
+            momentumVelocityRatio: 0.62,
+            minimumVelocity: 0.12,
+          }"
           :threshold="7"
-          :long-swipes-ratio="0.26"
-          :long-swipes-ms="240"
+          :long-swipes-ratio="0.2"
+          :long-swipes-ms="220"
           @swiper="onSwiper"
           @touch-start="onSwiperTouchStart"
-          @touch-end="onSwiperTouchEnd"
           @slide-change="onSlideChange"
         >
           <SwiperSlide
@@ -168,8 +175,6 @@ const s3UseCorrect = ref(true)
 const errorMessage = ref('')
 const currentUser = ref(null)
 const learningTargetIndex = ref(0)
-const swipeStartY = ref(0)
-const swipeStartAt = ref(0)
 
 const stats = computed(() => getStats())
 const masteredCount = computed(() => getData().words.filter(w => w.status === 'mastered').length)
@@ -213,30 +218,8 @@ function onSwiper(swiper) {
   swiperRef.value = swiper
 }
 
-function onSwiperTouchStart(swiper) {
+function onSwiperTouchStart() {
   if (feedback.value) sessionAudio.stopAudio()
-  swipeStartY.value = swiper?.touches?.startY ?? 0
-  swipeStartAt.value = performance.now()
-}
-
-function onSwiperTouchEnd(swiper) {
-  if (!swiper || swiper.destroyed) return
-  const endY = swiper?.touches?.currentY ?? swipeStartY.value
-  const diff = swipeStartY.value - endY
-  const distance = Math.abs(diff)
-  const duration = Math.max(1, performance.now() - swipeStartAt.value)
-  const velocity = distance / duration
-  // Fast, clear swipe gets one extra card; normal swipe stays single-card.
-  if (distance < 120 || velocity < 0.9) return
-  const dir = diff > 0 ? 1 : -1
-  const target = Math.min(
-    Math.max((swiper.activeIndex ?? 0) + dir, 0),
-    Math.max(displayOrder.value.length - 1, 0),
-  )
-  if (target === swiper.activeIndex) return
-  setTimeout(() => {
-    if (!swiper.destroyed) swiper.slideTo(target, 260)
-  }, 80)
 }
 
 function doNextCleanup() {
