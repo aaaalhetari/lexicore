@@ -21,14 +21,14 @@
 | البند | الملفات |
 |--------|---------|
 | عمود `processing_started_at`، فهرس فريد، منطق ملء الطابور (إضافة مهام الكلمات/المحتوى/الصوت)، `reset_stuck_card_jobs`، `claim_card_jobs`، `complete_card_job` / `fail_card_job`، إعادة بناء الـ view | `lexicore/supabase/migrations/20260321000000_fix_card_jobs_races_and_resets.sql` |
-| المصدر الوحيد للمنطق: `check_card_jobs_needed`؛ الاسم القديم في Postgres غلاف توافق فقط | `lexicore/supabase/migrations/20260322000000_check_card_jobs_needed_canonical.sql` |
+| المصدر الوحيد للمنطق: `check_card_jobs_needed`؛ تمديد 241 يمنع صفّين `add_card_sound` نشطين لنفس الكلمة ويحدّ `reset_stuck_card_jobs` للمهام اليتيمة | `lexicore/supabase/migrations/20260322000000_check_card_jobs_needed_canonical.sql`؛ `lexicore/supabase/migrations/20260324100000_add_card_sound_vocab_resolve_and_queue.sql` |
 | عمود `last_error` و`fail_card_job` مع `p_message`؛ مسح الخطأ عند الإكمال أو إعادة `pending` | `lexicore/supabase/migrations/20260323000000_card_jobs_last_error.sql`؛ `lexicore/supabase/functions/run-card-jobs/index.ts` |
 
 ## 4. توفير TTS عند اكتمال الصوت + توافق النص مع الصوت
 
 | البند | الملفات |
 |--------|---------|
-| تخطّي TTS عند اكتمال الروابط؛ إعادة استخدام الشقوق الموجودة | `lexicore/supabase/functions/add-card-sound/index.ts` |
+| تخطّي TTS عند اكتمال الروابط؛ مطابقة صف المفردات بـ `word` إن تعذّر `word_id` (صفّ واحد لكل مستخدم) | `lexicore/supabase/functions/add-card-sound/index.ts` |
 | مسح حقول الصوت عند إعادة توليد المحتوى | `lexicore/supabase/functions/make-card-content/handlers.ts` (`handleMakeFullCard`، `handleMakeCardContentStage`) |
 
 ## 5. ثوابت أنواع المهام (مصدر واحد)

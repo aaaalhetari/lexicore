@@ -40,28 +40,78 @@ async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+const VOCAB_SELECT =
+  "id, word, stage1_definitions, stage2_sentences, stage3_correct, stage3_incorrect, audio_word, audio_stage1_definitions, audio_stage2_sentences, audio_stage3_correct, audio_stage3_incorrect"
+
+type VocabRow = {
+  id: number
+  word: string
+  stage1_definitions: unknown
+  stage2_sentences: unknown
+  stage3_correct: unknown
+  stage3_incorrect: unknown
+  audio_word: unknown
+  audio_stage1_definitions: unknown
+  audio_stage2_sentences: unknown
+  audio_stage3_correct: unknown
+  audio_stage3_incorrect: unknown
+}
+
+/** Resolve row by (user_id, word_id); if missing, match same user + payload word (stale id / reinsert). */
+async function loadVocabularyRow(
+  supabase: ReturnType<typeof createServiceClient>,
+  user_id: string,
+  word_id: number,
+  word: string,
+): Promise<VocabRow> {
+  const { data: byId, error: errId } = await supabase
+    .from("vocabulary")
+    .select(VOCAB_SELECT)
+    .eq("id", word_id)
+    .eq("user_id", user_id)
+    .maybeSingle()
+
+  if (byId && !errId) return byId as VocabRow
+
+  const w = (word ?? "").trim()
+  if (!w) {
+    throw new Error("Word not found")
+  }
+
+  const { data: rows, error: errWord } = await supabase
+    .from("vocabulary")
+    .select(VOCAB_SELECT)
+    .eq("user_id", user_id)
+    .ilike("word", w)
+    .order("id", { ascending: true })
+    .limit(2)
+
+  if (errWord) throw new Error(`Word not found: ${errWord.message}`)
+  if (!rows?.length) throw new Error("Word not found")
+  if (rows.length > 1) {
+    throw new Error("Ambiguous word: multiple vocabulary rows for this user")
+  }
+  return rows[0] as VocabRow
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsOk()
 
   if (!OPENAI_API_KEY) return jsonErr("OPENAI_API_KEY not set", 500)
 
   try {
-    const body = (await req.json()) as { user_id?: string; word_id?: number; word?: string }
-    const { user_id, word_id, word } = body
-    if (!user_id || !word_id || !word) return jsonErr("user_id, word_id, word required", 400)
+    const body = (await req.json()) as { user_id?: string; word_id?: number | string; word?: string }
+    const { user_id, word } = body
+    const word_id =
+      typeof body.word_id === "string" ? parseInt(body.word_id, 10) : body.word_id
+    if (!user_id || word_id == null || Number.isNaN(word_id) || !word) {
+      return jsonErr("user_id, word_id, word required", 400)
+    }
 
     const supabase = createServiceClient()
-
-    const { data: vocab, error: vocabErr } = await supabase
-      .from("vocabulary")
-      .select(
-        "stage1_definitions, stage2_sentences, stage3_correct, stage3_incorrect, audio_word, audio_stage1_definitions, audio_stage2_sentences, audio_stage3_correct, audio_stage3_incorrect",
-      )
-      .eq("id", word_id)
-      .eq("user_id", user_id)
-      .single()
-
-    if (vocabErr || !vocab) throw new Error("Word not found")
+    const vocab = await loadVocabularyRow(supabase, user_id, word_id, word)
+    const resolvedId = vocab.id
+    const wordForPaths = (vocab.word ?? word).trim() || word.trim()
 
     const defs = (vocab.stage1_definitions ?? []) as { definition?: string }[]
     const sents = (vocab.stage2_sentences ?? []) as { sentence?: string }[]
@@ -96,7 +146,7 @@ Deno.serve(async (req) => {
     }
 
     if (!needTts) {
-      return jsonOk({ generated: 0, skipped: "audio_complete", word_id })
+      return jsonOk({ generated: 0, skipped: "audio_complete", word_id: resolvedId })
     }
 
     let generated = 0
@@ -114,7 +164,7 @@ Deno.serve(async (req) => {
         /* reused */
       } else {
         const buf = await generateTTS(wordText)
-        const path = getStoragePath(word, 0, 0)
+        const path = getStoragePath(wordForPaths, 0, 0)
         await supabase.storage.from("lexicore-audio").upload(path, buf, {
           contentType: "audio/mpeg",
           upsert: true,
@@ -138,7 +188,7 @@ Deno.serve(async (req) => {
         continue
       }
       const buf = await generateTTS(text)
-      const path = getStoragePath(word, 1, i)
+      const path = getStoragePath(wordForPaths, 1, i)
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
         contentType: "audio/mpeg",
         upsert: true,
@@ -162,7 +212,7 @@ Deno.serve(async (req) => {
         continue
       }
       const buf = await generateTTS(text)
-      const path = getStoragePath(word, 2, i)
+      const path = getStoragePath(wordForPaths, 2, i)
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
         contentType: "audio/mpeg",
         upsert: true,
@@ -186,7 +236,7 @@ Deno.serve(async (req) => {
         continue
       }
       const buf = await generateTTS(text)
-      const path = getStoragePath(word, 3, i, "correct")
+      const path = getStoragePath(wordForPaths, 3, i, "correct")
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
         contentType: "audio/mpeg",
         upsert: true,
@@ -210,7 +260,7 @@ Deno.serve(async (req) => {
         continue
       }
       const buf = await generateTTS(text)
-      const path = getStoragePath(word, 3, i, "incorrect")
+      const path = getStoragePath(wordForPaths, 3, i, "incorrect")
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
         contentType: "audio/mpeg",
         upsert: true,
@@ -230,10 +280,14 @@ Deno.serve(async (req) => {
     if (audioStage3Correct.length) updates.audio_stage3_correct = audioStage3Correct
     if (audioStage3Incorrect.length) updates.audio_stage3_incorrect = audioStage3Incorrect
     if (Object.keys(updates).length) {
-      await supabase.from("vocabulary").update(updates).eq("id", word_id).eq("user_id", user_id)
+      await supabase.from("vocabulary").update(updates).eq("id", resolvedId).eq("user_id", user_id)
     }
 
-    return jsonOk({ generated, word_id })
+    return jsonOk({
+      generated,
+      word_id: resolvedId,
+      resolved_from_payload_word: resolvedId !== word_id,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error("add-card-sound error:", msg)
