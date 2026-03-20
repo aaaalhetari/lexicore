@@ -2,88 +2,86 @@
   <div class="home-page">
     <!-- Key stats: two groups (not only total — RPC may lag or fallback uses local words for mix) -->
     <div v-if="showStatsDashboard" class="dashboard">
-      <div class="key-stats">
-        <div class="ks-group">
-          <div class="ks-group-title">Learning mix</div>
-          <div class="ks-row">
-            <div class="ks-icon">📘</div>
-            <div class="ks-info">
-              <div class="ks-num">{{ stats.learningBeforeToday ?? 0 }}</div>
-              <div class="ks-label">Learning before today</div>
-            </div>
+      <section class="dash-hero" aria-label="Today's study queue">
+        <div class="dash-hero-top">
+          <span class="dash-kicker">Today</span>
+          <span class="dash-hero-hint">remaining cycles + new cards</span>
+        </div>
+        <div class="dash-hero-mid">
+          <span class="dash-hero-num">{{ remainingPlusNewSum }}</span>
+          <span class="dash-hero-unit">cards</span>
+        </div>
+        <div class="dash-hero-split">
+          <div class="dash-pill dash-pill-rem">
+            <span class="dash-pill-n">{{ stats.eligibleToday ?? 0 }}</span>
+            <span class="dash-pill-l">Remaining</span>
           </div>
-          <div class="ks-row">
-            <div class="ks-icon">🧠</div>
-            <div class="ks-info">
-              <div class="ks-num">{{ stats.learningToday ?? 0 }}</div>
-              <div class="ks-label">Learning Today</div>
-            </div>
-          </div>
-          <div class="ks-row">
-            <div class="ks-icon">✨</div>
-            <div class="ks-info">
-              <div class="ks-num">{{ stats.newWord }}</div>
-              <div class="ks-label">New Today <span class="ks-dim">/ {{ stats.newWordsPerDay ?? 25 }}</span></div>
-            </div>
-          </div>
-          <div class="ks-row ks-sum">
-            <div class="ks-icon">∑</div>
-            <div class="ks-info">
-              <div class="ks-num">{{ learningMixSum }}</div>
-              <div class="ks-label">Sum <span class="ks-dim">(before today + today + new)</span></div>
-            </div>
+          <span class="dash-plus" aria-hidden="true">+</span>
+          <div class="dash-pill dash-pill-new">
+            <span class="dash-pill-n">{{ stats.newWord ?? 0 }}</span>
+            <span class="dash-pill-l">New</span>
           </div>
         </div>
+      </section>
 
-        <div class="ks-group ks-group-secondary">
-          <div class="ks-group-title">Pool</div>
-          <div class="ks-row">
-            <div class="ks-icon">📋</div>
-            <div class="ks-info">
-              <div class="ks-num">{{ stats.eligibleToday ?? 0 }}</div>
-              <div class="ks-label">Remaining</div>
-            </div>
+      <section class="dash-section" aria-label="Learning mix">
+        <div class="dash-section-head">
+          <span class="dash-section-title">Learning mix</span>
+          <span class="dash-section-cap">{{ learningMixSum }} active</span>
+        </div>
+        <div
+          class="mastery-bar"
+          role="img"
+          :aria-label="`Mix chart: ${mixSegPct('beforeToday')}% before today, ${mixSegPct('learningToday')}% today, ${mixSegPct('newToday')}% new`"
+        >
+          <div class="mb-segment mb-mix-before" :style="{ width: mixSegPct('beforeToday') + '%' }" />
+          <div class="mb-segment mb-mix-today" :style="{ width: mixSegPct('learningToday') + '%' }" />
+          <div class="mb-segment mb-mix-new" :style="{ width: mixSegPct('newToday') + '%' }" />
+        </div>
+        <div class="dash-mix-tiles">
+          <div class="dash-tile">
+            <span class="dash-tile-n">{{ stats.learningBeforeToday ?? 0 }}</span>
+            <span class="dash-tile-l">Words learned before today</span>
+            <span class="dash-tile-dot dbefore" aria-hidden="true" />
           </div>
-          <div class="ks-row">
-            <div class="ks-icon">⏳</div>
-            <div class="ks-info">
-              <div class="ks-num">{{ stats.waiting }}</div>
-              <div class="ks-label">Waiting <span class="ks-dim">/ {{ stats.waiting_target ?? 50 }}</span></div>
-            </div>
+          <div class="dash-tile">
+            <span class="dash-tile-n">{{ stats.learningToday ?? 0 }}</span>
+            <span class="dash-tile-l">New words to learn today</span>
+            <span class="dash-tile-dot dtoday" aria-hidden="true" />
           </div>
-          <div class="ks-row">
-            <div class="ks-icon">🏆</div>
-            <div class="ks-info">
-              <div class="ks-num">{{ stats.mastered ?? 0 }}</div>
-              <div class="ks-label">Mastered</div>
-            </div>
+          <div class="dash-tile">
+            <span class="dash-tile-n">{{ stats.newWord ?? 0 }}</span>
+            <span class="dash-tile-l">New words</span>
+            <span class="dash-tile-dot dnew" aria-hidden="true" />
           </div>
         </div>
-      </div>
-    </div>
+      </section>
 
-    <!-- Learning mix bar (same breakdown as the stats group above) -->
-    <div v-if="showStatsDashboard" class="mastery-bar-wrap">
-      <div class="mix-bar-title">Learning mix</div>
-      <div class="mastery-bar">
-        <div
-          class="mb-segment mb-mix-before"
-          :style="{ width: mixSegPct('beforeToday') + '%' }"
-        />
-        <div
-          class="mb-segment mb-mix-today"
-          :style="{ width: mixSegPct('learningToday') + '%' }"
-        />
-        <div
-          class="mb-segment mb-mix-new"
-          :style="{ width: mixSegPct('newToday') + '%' }"
-        />
-      </div>
-      <div class="mb-legend">
-        <span class="mb-dot mb-mix-before" />Before today
-        <span class="mb-dot mb-mix-today" />Today
-        <span class="mb-dot mb-mix-new" />New today
-      </div>
+      <section class="dash-section dash-pool" aria-label="Word pool">
+        <div class="dash-pool-inner">
+          <div class="dash-pool-main">
+            <div class="dash-pool-row">
+              <span class="dash-pool-title">Pool</span>
+              <span class="dash-pool-caption">waiting vs target</span>
+              <span class="dash-pool-nums">{{ stats.waiting ?? 0 }} / {{ stats.waiting_target ?? 50 }}</span>
+            </div>
+            <div
+              class="dash-pool-track"
+              role="progressbar"
+              :aria-valuenow="waitingBufferPct"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-label="Waiting words vs target"
+            >
+              <div class="dash-pool-fill" :style="{ width: waitingBufferPct + '%' }" />
+            </div>
+          </div>
+          <div class="dash-pool-mastered" aria-label="Mastered words">
+            <span class="dash-pool-m-num">{{ stats.mastered ?? 0 }}</span>
+            <span class="dash-pool-m-lbl">mastered</span>
+          </div>
+        </div>
+      </section>
     </div>
 
     <!-- Action Cards -->
@@ -129,6 +127,16 @@ const learningMixSum = computed(() => {
   const s = stats.value
   return (s.learningBeforeToday ?? 0) + (s.learningToday ?? 0) + (s.newWord ?? 0)
 })
+const remainingPlusNewSum = computed(() => {
+  const s = stats.value
+  return (s.eligibleToday ?? 0) + (s.newWord ?? 0)
+})
+/** % of waiting buffer vs target (cap 100). */
+const waitingBufferPct = computed(() => {
+  const s = stats.value
+  const cap = Math.max(1, Number(s.waiting_target) || 50)
+  return Math.min(100, Math.round(((Number(s.waiting) || 0) / cap) * 100))
+})
 /** Show dashboard if there is any vocabulary activity (totals from server or learning mix from loaded words). */
 const showStatsDashboard = computed(() => {
   const s = stats.value
@@ -154,132 +162,265 @@ function mixSegPct(part) {
   padding: calc(var(--sp) * 0.9) calc(var(--sp) * 0.9) calc(var(--tap) * 1.3);
 }
 
-/* ── Dashboard: grouped stats ─────────────── */
+/* ── Dashboard (unified) ─────────────── */
 .dashboard {
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.03), transparent 36%), var(--surface);
+  background: linear-gradient(165deg, rgba(210, 177, 90, 0.06), transparent 42%), var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 12px;
+  padding: 0;
+  margin-bottom: 14px;
   box-shadow: var(--shadow-sm);
-}
-
-.key-stats {
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
 }
 
-.ks-group {
+.dash-hero {
+  padding: 18px 18px 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent);
+  border-bottom: 1px solid var(--border);
+}
+.dash-hero-top {
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 10px;
+  margin-bottom: 6px;
 }
-.ks-group-secondary {
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-.ks-group-title {
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+.dash-kicker {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
+  color: var(--gold);
+}
+.dash-hero-hint {
+  font-size: 0.72rem;
   color: var(--text3);
-  margin-bottom: 2px;
+  text-align: right;
 }
-.ks-row.ks-sum {
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--border);
+.dash-hero-mid {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
 }
-.ks-row.ks-sum .ks-icon {
+.dash-hero-num {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 0.95rem;
-  color: var(--gold);
+  font-size: 2.35rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  letter-spacing: -0.02em;
 }
-.ks-row.ks-sum .ks-num {
-  color: var(--gold);
+.dash-hero-unit {
+  font-size: 0.85rem;
+  color: var(--text3);
+  font-weight: 500;
 }
-.ks-row {
+.dash-hero-split {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
-.ks-icon {
-  font-size: 1.15rem;
-  width: 28px;
-  text-align: center;
+.dash-pill {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+}
+.dash-pill-n {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.dash-pill-l {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+}
+.dash-pill-rem .dash-pill-n { color: var(--green); }
+.dash-pill-new .dash-pill-n { color: #6ba3d6; }
+.dash-plus {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text3);
   flex-shrink: 0;
 }
-.ks-info { flex: 1; display: flex; align-items: baseline; gap: 8px; }
-.ks-num {
+
+.dash-section {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.dash-section:last-of-type {
+  border-bottom: none;
+}
+.dash-pool {
+  background: rgba(0, 0, 0, 0.12);
+}
+.dash-pool-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 14px;
+  align-items: end;
+}
+.dash-pool-main {
+  min-width: 0;
+}
+.dash-pool-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 0.72rem;
+}
+.dash-pool-title {
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text3);
+}
+.dash-pool-caption {
+  color: var(--text3);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-pool-nums {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+}
+.dash-pool-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+.dash-pool-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+  background: linear-gradient(90deg, #6b5a3a, var(--gold));
+}
+.dash-pool-mastered {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  min-width: 76px;
+}
+.dash-pool-m-num {
   font-family: 'JetBrains Mono', monospace;
   font-size: 1.15rem;
   font-weight: 600;
-  color: var(--text);
-  min-width: 28px;
+  color: var(--green);
+  line-height: 1.2;
 }
-.ks-label {
-  font-size: 0.82rem;
-  color: var(--text2);
-}
-.ks-dim {
-  color: var(--text3);
-  font-size: 0.75rem;
-}
-
-/* ── Learning mix bar (matches ks-group "Learning mix") ─────────────── */
-.mastery-bar-wrap {
-  background: linear-gradient(155deg, rgba(255, 255, 255, 0.02), transparent 45%), var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 16px;
-  margin-bottom: 12px;
-  box-shadow: var(--shadow-sm);
-}
-.mix-bar-title {
-  font-size: 0.72rem;
+.dash-pool-m-lbl {
+  font-size: 0.65rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+  margin-top: 4px;
+}
+.dash-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.dash-section-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text3);
-  margin-bottom: 10px;
 }
+.dash-section-cap {
+  font-size: 0.72rem;
+  color: var(--text2);
+  font-family: 'JetBrains Mono', monospace;
+}
+
 .mastery-bar {
   display: flex;
-  height: 10px;
-  border-radius: 5px;
+  height: 8px;
+  border-radius: 4px;
   overflow: hidden;
   background: var(--surface2);
+  margin-bottom: 12px;
 }
 .mb-segment {
-  transition: width 0.5s ease;
+  transition: width 0.45s ease;
   min-width: 0;
 }
 .mb-segment.mb-mix-before { background: var(--gold); }
 .mb-segment.mb-mix-today { background: var(--green); }
 .mb-segment.mb-mix-new { background: #5b9bd5; }
 
-.mb-legend {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  font-size: 0.7rem;
+.dash-mix-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.dash-tile {
+  position: relative;
+  padding: 10px 8px 10px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  min-width: 0;
+}
+.dash-tile-n {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.dash-tile-l {
+  display: block;
+  font-size: 0.62rem;
   color: var(--text3);
-  flex-wrap: wrap;
+  margin-top: 4px;
+  line-height: 1.35;
+  hyphens: auto;
 }
-.mb-dot {
-  width: 8px;
-  height: 8px;
+.dash-tile-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  display: inline-block;
-  margin-left: 8px;
 }
-.mb-dot:first-child { margin-left: 0; }
-.mb-dot.mb-mix-before { background: var(--gold); }
-.mb-dot.mb-mix-today { background: var(--green); }
-.mb-dot.mb-mix-new { background: #5b9bd5; }
+.dash-tile-dot.dbefore { background: var(--gold); }
+.dash-tile-dot.dtoday { background: var(--green); }
+.dash-tile-dot.dnew { background: #5b9bd5; }
 
 /* ── Action cards ─────────────── */
 .home-actions {
