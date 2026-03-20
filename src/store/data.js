@@ -9,6 +9,7 @@ import {
   getSettings as getRealtimeSettings,
   getStats as getRealtimeStats,
   refetchWord,
+  fetchStatsSummary,
   today,
 } from './realtime.js'
 
@@ -104,6 +105,7 @@ export async function updateSettings(settings) {
   }
   const { refetchSettings } = await import('./realtime.js')
   await refetchSettings(user.id)
+  await fetchStatsSummary()
 }
 
 /** Ensure schema has new_words_per_day and waiting_target columns (call on app init) */
@@ -123,6 +125,7 @@ export async function refreshSettings() {
   if (!user) return
   const { refetchSettings } = await import('./realtime.js')
   await refetchSettings(user.id)
+  await fetchStatsSummary()
 }
 
 /** Assign daily quota: waiting -> new_word (call on app init for fast start) */
@@ -229,8 +232,6 @@ export async function addWord(wordData) {
 
   const wordLower = (wordData.word || '').trim().toLowerCase()
   if (!wordLower) return false
-  const existing = getWords().some((w) => w.word?.toLowerCase() === wordLower)
-  if (existing) return false
 
   const def = wordData.definition || `Definition for "${wordData.word}"`
   const { error } = await supabase.from('vocabulary').insert({
@@ -260,7 +261,7 @@ export async function importCSV(text) {
   const s3cIdx = header.indexOf('s3_correct')
   const s3wIdx = header.indexOf('s3_wrong')
   let added = 0
-  const existing = new Set(getWords().map((w) => w.word.toLowerCase()))
+  const existing = new Set()
   for (let i = 1; i < lines.length; i++) {
     const cols = lines[i].split(',').map((c) => c.replace(/^"|"$/g, '').trim())
     const word = (cols[wordIdx] || '').trim().toLowerCase()
@@ -273,8 +274,10 @@ export async function importCSV(text) {
       s3_correct: cols[s3cIdx] || '',
       s3_wrong: cols[s3wIdx] || '',
     })
-    if (ok) added++
-    existing.add(word)
+    if (ok) {
+      added++
+      existing.add(word)
+    }
   }
   return added
 }
@@ -317,7 +320,7 @@ export async function importJSON(jsonStr) {
   const data = JSON.parse(jsonStr)
   const words = data.words ?? []
   let added = 0
-  const existing = new Set(getWords().map((w) => w.word.toLowerCase()))
+  const existing = new Set()
   for (const w of words) {
     const word = (w.word || '').trim().toLowerCase()
     if (!word || existing.has(word)) continue
@@ -329,8 +332,10 @@ export async function importJSON(jsonStr) {
       s3_correct: w.s3_correct,
       s3_wrong: w.s3_wrong,
     })
-    if (ok) added++
-    existing.add(word)
+    if (ok) {
+      added++
+      existing.add(word)
+    }
   }
   return added
 }

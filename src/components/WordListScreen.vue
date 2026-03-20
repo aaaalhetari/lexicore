@@ -18,7 +18,7 @@
 
     <!-- Word List -->
     <div v-if="words.length === 0" class="empty-msg card">
-      No words yet. Import a CSV or sign in for server-generated words.
+      No active study words (new / learning). Waiting and mastered are not listed here.
     </div>
     <div v-else class="word-list">
       <div v-for="w in words" :key="w.id" class="word-item">

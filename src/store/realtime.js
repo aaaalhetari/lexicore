@@ -5,10 +5,14 @@
 import { reactive } from 'vue'
 import { supabase, hasSupabase } from '../lib/supabase.js'
 
+/** Loaded into client store (session + word list). Excludes waiting/mastered to limit payload size. */
+export const VOCABULARY_ACTIVE_STATUSES = ['new_word', 'learning_today', 'learning_before_today']
+
 const state = reactive({
   words: [],
   settings: null,
   sessions: [],
+  statsSummary: null,
   ready: false,
 })
 
@@ -32,6 +36,10 @@ function sameSessionRow(a, b) {
   return String(a.user_id ?? '') === String(b.user_id ?? '') && String(a.date ?? '') === String(b.date ?? '')
 }
 
+function isActiveVocabStatus(status) {
+  return VOCABULARY_ACTIVE_STATUSES.includes(status)
+}
+
 export function getWords() {
   return state.words
 }
@@ -44,29 +52,44 @@ export function getWordById(wordId) {
 /** Optimistically update word in store (call after submitAnswer to avoid realtime delay) */
 export function updateWordOptimistic(wordId, updates) {
   const idx = state.words.findIndex((w) => sameId(w.id, wordId))
-  if (idx >= 0) {
-    const current = state.words[idx]
-    state.words.splice(idx, 1, { ...current, ...updates })
+  if (idx < 0) return
+  const current = state.words[idx]
+  const merged = { ...current, ...updates }
+  if (!isActiveVocabStatus(merged.status)) {
+    state.words.splice(idx, 1)
+    return
   }
+  state.words.splice(idx, 1, merged)
 }
 
 export function getSettings() {
   return state.settings
 }
 
-export function getStats() {
+function statN(v) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+function normalizeStatsPayload(raw) {
+  return {
+    total: statN(raw.total),
+    mastered: statN(raw.mastered),
+    waiting: statN(raw.waiting),
+    new_word: statN(raw.new_word),
+    learning_today: statN(raw.learning_today),
+    learning_before_today: statN(raw.learning_before_today),
+    eligible_today: statN(raw.eligible_today),
+    today_answered: statN(raw.today_answered),
+  }
+}
+
+function getStatsFromWordsOnly() {
   const words = state.words
-  const total = words.length
-  const mastered = words.filter((w) => w.status === 'mastered').length
+  const todayStr = today()
   const learningToday = words.filter((w) => w.status === 'learning_today').length
   const learningBeforeToday = words.filter((w) => w.status === 'learning_before_today').length
-  const learning = learningToday + learningBeforeToday
   const newWord = words.filter((w) => w.status === 'new_word').length
-  const waiting = words.filter((w) => w.status === 'waiting').length
-  const todayStr = today()
-  const todayAnswered = state.sessions
-    .filter((s) => s.date === todayStr)
-    .reduce((sum, s) => sum + (s.answered || 0), 0)
   const eligibleToday = words.filter((w) => {
     if (w.status !== 'learning_today' && w.status !== 'learning_before_today') return false
     const c1 = String(w.cycle_1_completed_date ?? '').slice(0, 10)
@@ -74,10 +97,57 @@ export function getStats() {
     const c3 = String(w.cycle_3_completed_date ?? '').slice(0, 10)
     return c1 !== todayStr && c2 !== todayStr && c3 !== todayStr
   }).length
+  return {
+    learningToday,
+    learningBeforeToday,
+    newWord,
+    learning: learningToday + learningBeforeToday,
+    eligibleToday,
+    newWordsInLearningToday: learningToday,
+  }
+}
+
+export function getStats() {
   const waitingTarget = state.settings?.waiting_target ?? 50
   const newWordsPerDay = state.settings?.new_words_per_day ?? 25
-  const newWordsInLearningToday = learningToday
-  return { total, mastered, learning, learningToday, learningBeforeToday, newWord, waiting, todayAnswered, eligibleToday, waiting_target: waitingTarget, newWordsPerDay, newWordsInLearningToday }
+  const todayStr = today()
+  const todayAnswered = state.sessions
+    .filter((x) => x.date === todayStr)
+    .reduce((sum, x) => sum + (x.answered || 0), 0)
+  const s = state.statsSummary
+  if (!s) {
+    const w = getStatsFromWordsOnly()
+    return {
+      total: 0,
+      mastered: 0,
+      learning: w.learning,
+      learningToday: w.learningToday,
+      learningBeforeToday: w.learningBeforeToday,
+      newWord: w.newWord,
+      waiting: 0,
+      todayAnswered,
+      eligibleToday: w.eligibleToday,
+      waiting_target: waitingTarget,
+      newWordsPerDay,
+      newWordsInLearningToday: w.newWordsInLearningToday,
+    }
+  }
+  const learningToday = statN(s.learning_today)
+  const learningBeforeToday = statN(s.learning_before_today)
+  return {
+    total: statN(s.total),
+    mastered: statN(s.mastered),
+    learning: learningToday + learningBeforeToday,
+    learningToday,
+    learningBeforeToday,
+    newWord: statN(s.new_word),
+    waiting: statN(s.waiting),
+    todayAnswered,
+    eligibleToday: statN(s.eligible_today),
+    waiting_target: waitingTarget,
+    newWordsPerDay,
+    newWordsInLearningToday: learningToday,
+  }
 }
 
 export function today() {
@@ -88,11 +158,87 @@ export function isReady() {
   return state.ready
 }
 
+async function fetchStatsSummaryFallbackCounts() {
+  const uid = currentUserId
+  if (!uid) return
+  const head = { count: 'exact', head: true }
+  const countStatus = async (status) => {
+    const { count, error: cErr } = await supabase
+      .from('vocabulary')
+      .select('*', head)
+      .eq('user_id', uid)
+      .eq('status', status)
+    if (cErr) console.warn('vocabulary count:', status, cErr)
+    return count ?? 0
+  }
+  const todayStr = today()
+  const totalRes = await supabase.from('vocabulary').select('*', head).eq('user_id', uid)
+  if (totalRes.error) console.warn('vocabulary total count:', totalRes.error)
+  const [mastered, waiting, new_word, learning_today, learning_before_today] = await Promise.all([
+    countStatus('mastered'),
+    countStatus('waiting'),
+    countStatus('new_word'),
+    countStatus('learning_today'),
+    countStatus('learning_before_today'),
+  ])
+  let eligible_today = 0
+  const { data: eligRows, error: eligErr } = await supabase
+    .from('vocabulary')
+    .select('cycle_1_completed_date, cycle_2_completed_date, cycle_3_completed_date')
+    .eq('user_id', uid)
+    .in('status', ['learning_today', 'learning_before_today'])
+  if (eligErr) {
+    console.warn('eligible_today fallback:', eligErr)
+  } else {
+    for (const w of eligRows ?? []) {
+      const c1 = String(w.cycle_1_completed_date ?? '').slice(0, 10)
+      const c2 = String(w.cycle_2_completed_date ?? '').slice(0, 10)
+      const c3 = String(w.cycle_3_completed_date ?? '').slice(0, 10)
+      if (c1 !== todayStr && c2 !== todayStr && c3 !== todayStr) eligible_today++
+    }
+  }
+  state.statsSummary = normalizeStatsPayload({
+    total: totalRes.count ?? 0,
+    mastered,
+    waiting,
+    new_word,
+    learning_today,
+    learning_before_today,
+    eligible_today,
+    today_answered: 0,
+  })
+}
+
+export async function fetchStatsSummary() {
+  if (!hasSupabase() || !currentUserId) {
+    state.statsSummary = null
+    return
+  }
+  const { data, error } = await supabase.rpc('vocabulary_stats_summary', {
+    p_today: today(),
+  })
+  let raw = data
+  if (!error && raw != null && typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      raw = null
+    }
+  }
+  if (!error && raw && typeof raw === 'object') {
+    state.statsSummary = normalizeStatsPayload(raw)
+    return
+  }
+  if (error) console.warn('vocabulary_stats_summary:', error)
+  await fetchStatsSummaryFallbackCounts()
+}
+
 async function fetchVocabulary(userId) {
   const { data: initial, error: vocabError } = await supabase
     .from('vocabulary')
     .select('*')
     .eq('user_id', userId)
+    .in('status', VOCABULARY_ACTIVE_STATUSES)
     .order('id')
 
   if (vocabError) {
@@ -154,6 +300,7 @@ async function resyncCurrentUser() {
   try {
     await Promise.all([
       fetchVocabulary(userId),
+      fetchStatsSummary(),
       fetchSettings(userId),
       fetchSessions(userId),
     ])
@@ -196,6 +343,7 @@ export async function subscribeRealtime(userId) {
   if (!hasSupabase() || !userId) {
     // Keep store deterministic after sign-out / missing config.
     state.words = []
+    state.statsSummary = null
     state.sessions = []
     state.settings = {
       new_words_per_day: 25,
@@ -210,6 +358,7 @@ export async function subscribeRealtime(userId) {
 
   await Promise.all([
     fetchVocabulary(userId),
+    fetchStatsSummary(),
     fetchSettings(userId),
     fetchSessions(userId),
   ])
@@ -266,17 +415,25 @@ function handleVocabularyChange(payload) {
   const { eventType, new: newRow, old: oldRow } = payload
 
   if (eventType === 'INSERT') {
+    const nw = normalizeWord(newRow)
+    if (!isActiveVocabStatus(nw.status)) {
+      scheduleQuickResync(450)
+      return
+    }
     const exists = state.words.some((w) => sameId(w.id, newRow.id))
     if (!exists) {
-      state.words.push(normalizeWord(newRow))
+      state.words.push(nw)
       state.words.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
     }
   } else if (eventType === 'UPDATE') {
+    const nw = normalizeWord(newRow)
     const idx = state.words.findIndex((w) => sameId(w.id, newRow.id))
-    if (idx >= 0) {
-      state.words.splice(idx, 1, normalizeWord(newRow))
+    if (!isActiveVocabStatus(nw.status)) {
+      if (idx >= 0) state.words.splice(idx, 1)
+    } else if (idx >= 0) {
+      state.words.splice(idx, 1, nw)
     } else {
-      state.words.push(normalizeWord(newRow))
+      state.words.push(nw)
       state.words.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))
     }
   } else if (eventType === 'DELETE') {
@@ -395,6 +552,7 @@ export function unsubscribeRealtime() {
     window.removeEventListener('online', onlineHandler)
     onlineHandler = null
   }
+  state.statsSummary = null
   currentUserId = null
 }
 
@@ -410,6 +568,10 @@ export async function refetchWord(wordId, userId) {
   if (error || !data) return false
   const normalized = normalizeWord(data)
   const idx = state.words.findIndex((w) => sameId(w.id, wordId))
+  if (!isActiveVocabStatus(normalized.status)) {
+    if (idx >= 0) state.words.splice(idx, 1)
+    return true
+  }
   if (idx >= 0) {
     state.words.splice(idx, 1, normalized)
   } else {

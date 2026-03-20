@@ -1,94 +1,88 @@
 <template>
   <div class="home-page">
-    <div class="home-hero">
-      <h1>Master Every Word</h1>
-      <p>A precision vocabulary trainer built on active recall, spaced cycles, and zero guesswork.</p>
-    </div>
-
-    <!-- Progress Ring + Key Stats -->
-    <div v-if="stats.total > 0" class="dashboard">
-      <div class="progress-ring-wrap">
-        <svg class="progress-ring" viewBox="0 0 120 120">
-          <circle class="ring-bg" cx="60" cy="60" r="52" />
-          <circle
-            class="ring-fill"
-            cx="60" cy="60" r="52"
-            :stroke-dasharray="circumference"
-            :stroke-dashoffset="circumference - (circumference * masteryPct / 100)"
-          />
-        </svg>
-        <div class="ring-label">
-          <div class="ring-pct">{{ masteryPct }}%</div>
-          <div class="ring-sub">mastered</div>
-        </div>
-      </div>
-
+    <!-- Key stats: two groups (not only total — RPC may lag or fallback uses local words for mix) -->
+    <div v-if="showStatsDashboard" class="dashboard">
       <div class="key-stats">
-        <div class="ks-row">
-          <div class="ks-icon">📚</div>
-          <div class="ks-info">
-            <div class="ks-num">{{ stats.total }}</div>
-            <div class="ks-label">Total Words</div>
+        <div class="ks-group">
+          <div class="ks-group-title">Learning mix</div>
+          <div class="ks-row">
+            <div class="ks-icon">📘</div>
+            <div class="ks-info">
+              <div class="ks-num">{{ stats.learningBeforeToday ?? 0 }}</div>
+              <div class="ks-label">Learning before today</div>
+            </div>
+          </div>
+          <div class="ks-row">
+            <div class="ks-icon">🧠</div>
+            <div class="ks-info">
+              <div class="ks-num">{{ stats.learningToday ?? 0 }}</div>
+              <div class="ks-label">Learning Today</div>
+            </div>
+          </div>
+          <div class="ks-row">
+            <div class="ks-icon">✨</div>
+            <div class="ks-info">
+              <div class="ks-num">{{ stats.newWord }}</div>
+              <div class="ks-label">New Today <span class="ks-dim">/ {{ stats.newWordsPerDay ?? 25 }}</span></div>
+            </div>
+          </div>
+          <div class="ks-row ks-sum">
+            <div class="ks-icon">∑</div>
+            <div class="ks-info">
+              <div class="ks-num">{{ learningMixSum }}</div>
+              <div class="ks-label">Sum <span class="ks-dim">(before today + today + new)</span></div>
+            </div>
           </div>
         </div>
-        <div class="ks-row">
-          <div class="ks-icon">📋</div>
-          <div class="ks-info">
-            <div class="ks-num">{{ stats.eligibleToday ?? 0 }}</div>
-            <div class="ks-label">Remaining</div>
+
+        <div class="ks-group ks-group-secondary">
+          <div class="ks-group-title">Pool</div>
+          <div class="ks-row">
+            <div class="ks-icon">📋</div>
+            <div class="ks-info">
+              <div class="ks-num">{{ stats.eligibleToday ?? 0 }}</div>
+              <div class="ks-label">Remaining</div>
+            </div>
           </div>
-        </div>
-        <div class="ks-row">
-          <div class="ks-icon">🏆</div>
-          <div class="ks-info">
-            <div class="ks-num">{{ stats.mastered ?? 0 }}</div>
-            <div class="ks-label">Mastered</div>
+          <div class="ks-row">
+            <div class="ks-icon">⏳</div>
+            <div class="ks-info">
+              <div class="ks-num">{{ stats.waiting }}</div>
+              <div class="ks-label">Waiting <span class="ks-dim">/ {{ stats.waiting_target ?? 50 }}</span></div>
+            </div>
           </div>
-        </div>
-        <div class="ks-row">
-          <div class="ks-icon">📘</div>
-          <div class="ks-info">
-            <div class="ks-num">{{ stats.learningBeforeToday ?? 0 }}</div>
-            <div class="ks-label">Old Learning</div>
-          </div>
-        </div>
-        <div class="ks-row">
-          <div class="ks-icon">🧠</div>
-          <div class="ks-info">
-            <div class="ks-num">{{ stats.learningToday ?? 0 }}</div>
-            <div class="ks-label">Learning Today</div>
-          </div>
-        </div>
-        <div class="ks-row">
-          <div class="ks-icon">✨</div>
-          <div class="ks-info">
-            <div class="ks-num">{{ stats.newWord }}</div>
-            <div class="ks-label">New Today <span class="ks-dim">/ {{ stats.newWordsPerDay ?? 25 }}</span></div>
-          </div>
-        </div>
-        <div class="ks-row">
-          <div class="ks-icon">⏳</div>
-          <div class="ks-info">
-            <div class="ks-num">{{ stats.waiting }}</div>
-            <div class="ks-label">Waiting <span class="ks-dim">/ {{ stats.waiting_target ?? 50 }}</span></div>
+          <div class="ks-row">
+            <div class="ks-icon">🏆</div>
+            <div class="ks-info">
+              <div class="ks-num">{{ stats.mastered ?? 0 }}</div>
+              <div class="ks-label">Mastered</div>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Mastery Bar -->
-    <div v-if="stats.total > 0" class="mastery-bar-wrap">
+    <!-- Learning mix bar (same breakdown as the stats group above) -->
+    <div v-if="showStatsDashboard" class="mastery-bar-wrap">
+      <div class="mix-bar-title">Learning mix</div>
       <div class="mastery-bar">
-        <div class="mb-segment mb-mastered" :style="{ width: segPct('mastered') + '%' }" />
-        <div class="mb-segment mb-learning" :style="{ width: segPct('learning') + '%' }" />
-        <div class="mb-segment mb-new" :style="{ width: segPct('newWord') + '%' }" />
-        <div class="mb-segment mb-waiting" :style="{ width: segPct('waiting') + '%' }" />
+        <div
+          class="mb-segment mb-mix-before"
+          :style="{ width: mixSegPct('beforeToday') + '%' }"
+        />
+        <div
+          class="mb-segment mb-mix-today"
+          :style="{ width: mixSegPct('learningToday') + '%' }"
+        />
+        <div
+          class="mb-segment mb-mix-new"
+          :style="{ width: mixSegPct('newToday') + '%' }"
+        />
       </div>
       <div class="mb-legend">
-        <span class="mb-dot mb-mastered" />Mastered
-        <span class="mb-dot mb-learning" />Learning
-        <span class="mb-dot mb-new" />New
-        <span class="mb-dot mb-waiting" />Waiting
+        <span class="mb-dot mb-mix-before" />Before today
+        <span class="mb-dot mb-mix-today" />Today
+        <span class="mb-dot mb-mix-new" />New today
       </div>
     </div>
 
@@ -105,7 +99,7 @@
         <div class="card-icon">📖</div>
         <div class="card-text">
           <h3>Word List</h3>
-          <p>View all your words</p>
+          <p>New and learning words only</p>
         </div>
       </div>
       <div class="home-card" @click="$emit('settings')">
@@ -120,55 +114,48 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { getStats } from '../store/data.js'
+import { fetchStatsSummary } from '../store/realtime.js'
 
 defineEmits(['start', 'words', 'settings'])
 
-const stats = computed(() => getStats())
-const circumference = 2 * Math.PI * 52
-const masteryPct = computed(() => {
-  const t = stats.value.total || 1
-  return Math.round((stats.value.mastered / t) * 100)
+onMounted(() => {
+  fetchStatsSummary()
 })
-function segPct(key) {
-  const t = stats.value.total || 1
-  return Math.round(((stats.value[key] ?? 0) / t) * 100)
+
+const stats = computed(() => getStats())
+const learningMixSum = computed(() => {
+  const s = stats.value
+  return (s.learningBeforeToday ?? 0) + (s.learningToday ?? 0) + (s.newWord ?? 0)
+})
+/** Show dashboard if there is any vocabulary activity (totals from server or learning mix from loaded words). */
+const showStatsDashboard = computed(() => {
+  const s = stats.value
+  const mix = learningMixSum.value
+  return (s.total ?? 0) > 0 || mix > 0 || (s.waiting ?? 0) > 0 || (s.mastered ?? 0) > 0
+})
+/** Width % for each slice of the learning-mix bar (denominator = sum of the three counts). */
+function mixSegPct(part) {
+  const s = stats.value
+  const denom = learningMixSum.value || 1
+  const v =
+    part === 'beforeToday'
+      ? (s.learningBeforeToday ?? 0)
+      : part === 'learningToday'
+        ? (s.learningToday ?? 0)
+        : (s.newWord ?? 0)
+  return Math.round((v / denom) * 100)
 }
 </script>
 
 <style scoped>
 .home-page {
-  padding-bottom: calc(var(--tap) * 1.3);
+  padding: calc(var(--sp) * 0.9) calc(var(--sp) * 0.9) calc(var(--tap) * 1.3);
 }
 
-.home-hero {
-  text-align: center;
-  padding: 18px 0 16px;
-  margin-bottom: 10px;
-}
-.home-hero h1 {
-  font-family: 'Fraunces', serif;
-  font-size: clamp(1.8rem, 5vw, 2.4rem);
-  font-weight: 700;
-  background: linear-gradient(135deg, var(--gold2), var(--gold));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  line-height: 1.2;
-  margin-bottom: 8px;
-}
-.home-hero p {
-  color: var(--text2);
-  font-size: 0.95rem;
-  line-height: 1.5;
-  margin: 0 auto;
-}
-
-/* ── Dashboard: ring + stats ─────────────── */
+/* ── Dashboard: grouped stats ─────────────── */
 .dashboard {
-  display: flex;
-  align-items: center;
-  gap: 20px;
   background: linear-gradient(155deg, rgba(255, 255, 255, 0.03), transparent 36%), var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -177,57 +164,41 @@ function segPct(key) {
   box-shadow: var(--shadow-sm);
 }
 
-.progress-ring-wrap {
-  position: relative;
-  width: 110px;
-  height: 110px;
-  flex-shrink: 0;
-}
-.progress-ring {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-.ring-bg {
-  fill: none;
-  stroke: var(--border);
-  stroke-width: 10;
-}
-.ring-fill {
-  fill: none;
-  stroke: var(--gold);
-  stroke-width: 10;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 0.6s ease;
-}
-.ring-label {
-  position: absolute;
-  inset: 0;
+.key-stats {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-.ring-pct {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--gold);
-  line-height: 1;
-}
-.ring-sub {
-  font-size: 0.65rem;
-  color: var(--text3);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-top: 2px;
+  gap: 16px;
 }
 
-.key-stats {
-  flex: 1;
+.ks-group {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.ks-group-secondary {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.ks-group-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 2px;
+}
+.ks-row.ks-sum {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.ks-row.ks-sum .ks-icon {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.95rem;
+  color: var(--gold);
+}
+.ks-row.ks-sum .ks-num {
+  color: var(--gold);
 }
 .ks-row {
   display: flex;
@@ -257,7 +228,7 @@ function segPct(key) {
   font-size: 0.75rem;
 }
 
-/* ── Mastery breakdown bar ─────────────── */
+/* ── Learning mix bar (matches ks-group "Learning mix") ─────────────── */
 .mastery-bar-wrap {
   background: linear-gradient(155deg, rgba(255, 255, 255, 0.02), transparent 45%), var(--surface);
   border: 1px solid var(--border);
@@ -265,6 +236,14 @@ function segPct(key) {
   padding: 14px 16px;
   margin-bottom: 12px;
   box-shadow: var(--shadow-sm);
+}
+.mix-bar-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 10px;
 }
 .mastery-bar {
   display: flex;
@@ -277,10 +256,9 @@ function segPct(key) {
   transition: width 0.5s ease;
   min-width: 0;
 }
-.mb-segment.mb-mastered { background: var(--gold); }
-.mb-segment.mb-learning { background: var(--green); }
-.mb-segment.mb-new { background: #5b9bd5; }
-.mb-segment.mb-waiting { background: var(--border); }
+.mb-segment.mb-mix-before { background: var(--gold); }
+.mb-segment.mb-mix-today { background: var(--green); }
+.mb-segment.mb-mix-new { background: #5b9bd5; }
 
 .mb-legend {
   display: flex;
@@ -299,10 +277,9 @@ function segPct(key) {
   margin-left: 8px;
 }
 .mb-dot:first-child { margin-left: 0; }
-.mb-dot.mb-mastered { background: var(--gold); }
-.mb-dot.mb-learning { background: var(--green); }
-.mb-dot.mb-new { background: #5b9bd5; }
-.mb-dot.mb-waiting { background: var(--border); }
+.mb-dot.mb-mix-before { background: var(--gold); }
+.mb-dot.mb-mix-today { background: var(--green); }
+.mb-dot.mb-mix-new { background: #5b9bd5; }
 
 /* ── Action cards ─────────────── */
 .home-actions {

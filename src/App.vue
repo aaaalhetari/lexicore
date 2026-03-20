@@ -1,15 +1,6 @@
 <template>
   <div class="app-loading" v-if="loading">Loading words…</div>
   <div class="app" :class="{ 'session-active': screen === 'session' }" v-else>
-    <!-- HEADER: hide nav on session (stats in card) -->
-    <div v-if="screen !== 'session'" class="header">
-      <div class="logo-wrap">
-        <div class="logo">LexiCore <span>v2.0</span></div>
-        <div class="logo-sub">Focused vocabulary training</div>
-      </div>
-    </div>
-
-    <!-- SCREENS -->
     <div class="content">
       <Transition :name="transitionName" mode="out-in">
         <HomeScreen     v-if="screen === 'home'"     @start="goTo('session')" @words="goTo('words')" @settings="goTo('settings')" />
@@ -66,6 +57,7 @@ onMounted(async () => {
     await subscribeRealtime(user?.id ?? null)
     if (user) {
       await assignDailyQuota(user.id)
+      requestQuickResync(0)
     }
   } catch (err) {
     console.error('Init failed:', err)
@@ -93,6 +85,7 @@ onUnmounted(() => {
   flex-direction: column;
   overflow-y: auto;
   min-height: 0;
+  padding-top: env(safe-area-inset-top);
 }
 
 .app.session-active .content {
@@ -101,37 +94,6 @@ onUnmounted(() => {
   min-height: 0;
 }
 
-.header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: calc(env(safe-area-inset-top) + var(--sp) * 0.9) calc(var(--sp) * 0.9) calc(var(--sp) * 1.1);
-  flex-shrink: 0;
-  position: relative;
-  z-index: 10;
-  background: linear-gradient(180deg, rgba(12, 13, 16, 0.95), rgba(12, 13, 16, 0.65) 65%, transparent);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-.logo-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.logo {
-  font-family: 'Fraunces', serif;
-  font-size: clamp(1.2rem, 1.2vmin + 1rem, 1.9rem);
-  color: var(--gold); letter-spacing: 0.5px;
-  line-height: 1;
-}
-.logo span {
-  color: var(--text3);
-  font-size: 0.72rem;
-  font-family: 'JetBrains Mono', monospace;
-  margin-left: calc(var(--sp) * 0.55);
-}
-.logo-sub {
-  color: var(--text3);
-  font-size: 0.72rem;
-  letter-spacing: 0.02em;
-}
 .app-loading {
   min-height: 100vh;
   display: flex;

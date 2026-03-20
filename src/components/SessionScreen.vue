@@ -126,7 +126,7 @@ import { Swiper, SwiperSlide } from 'swiper/vue'
 import { Mousewheel } from 'swiper/modules'
 import 'swiper/css'
 import { useSession } from '../composables/useSession.js'
-import { useAudio } from '../composables/useAudio.js'
+import { useAudio, collectSessionAudioUrls } from '../composables/useAudio.js'
 import { getData, getStats, downloadJSON, explainSentence } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser } from '../store/sync.js'
@@ -163,7 +163,7 @@ const learningTargetIndex = ref(0)
 const touchScrollState = ref({ scrollBox: null, startY: 0, startScrollTop: 0 })
 
 const stats = computed(() => getStats())
-const masteredCount = computed(() => getData().words.filter(w => w.status === 'mastered').length)
+const masteredCount = computed(() => stats.value.mastered ?? 0)
 
 const sessionStats = computed(() => {
   const ans = answeredCount.value ?? 0
@@ -298,6 +298,24 @@ watch([() => phase.value, currentWord, displayOrder], () => {
     phase.value = 'end'
   }
 }, { immediate: true })
+
+/** Warm HTTP cache for current + adjacent slides so audio starts fast when flipping quickly. */
+watch(
+  () => [phase.value, displayIndex.value, displayOrder.value],
+  () => {
+    if (phase.value !== 'question') return
+    const order = displayOrder.value
+    const i = displayIndex.value
+    if (!order?.length) return
+    const urls = []
+    for (const j of [i - 1, i, i + 1]) {
+      if (j < 0 || j >= order.length) continue
+      urls.push(...collectSessionAudioUrls(order[j]))
+    }
+    sessionAudio.prefetchAudioUrls(urls)
+  },
+  { immediate: true, deep: true },
+)
 
 onUnmounted(() => {
   sessionAudio.stopAudio()

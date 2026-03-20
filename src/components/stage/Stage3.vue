@@ -70,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted, watch, inject } from 'vue'
+import { ref, computed, onUnmounted, watch, inject, nextTick } from 'vue'
 import SessionStatsBar from '../SessionStatsBar.vue'
 import StageCardToolbar from './StageCardToolbar.vue'
 import StagePlaceholderCard from './StagePlaceholderCard.vue'
@@ -207,7 +207,8 @@ function answer(val) {
   chosen.value = val
   answered.value = true
   playWord(props.word, 5)
-  emit('answered', val === props.useCorrect)
+  // Defer parent handlers until after play starts (avoids stop/resync racing the repeat loop).
+  nextTick(() => emit('answered', val === props.useCorrect))
 }
 
 function onRetryExplanationClick() {
