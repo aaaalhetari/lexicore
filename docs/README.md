@@ -64,6 +64,8 @@ npm run dev
 
 ثم http://localhost:5173/lexicore/
 
+- محرر عربي / RTL في Cursor: [`docs/CURSOR_RTL_SETUP.md`](CURSOR_RTL_SETUP.md)
+
 ## 7. النشر (GitHub Pages)
 
 - Workflow: `.github/workflows/deploy.yml`
