@@ -5,10 +5,10 @@
 import { supabase, hasSupabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase.js'
 import {
   getWords,
-  getWordById,
   getSettings as getRealtimeSettings,
   getStats as getRealtimeStats,
-  refetchWord,
+  getStatsLoadError,
+  refetchSettings,
   fetchStatsSummary,
   today,
 } from './realtime.js'
@@ -26,6 +26,8 @@ export function getSettings() {
 export function getStats() {
   return getRealtimeStats()
 }
+
+export { getStatsLoadError }
 
 /** Submit answer to backend - triggers Realtime update */
 export async function submitAnswer(wordId, isCorrect) {
@@ -103,7 +105,6 @@ export async function updateSettings(settings) {
   if (result?.ok === false) {
     throw new Error(result?.message ?? `Minimum is ${result?.min_allowed ?? minNewWords}`)
   }
-  const { refetchSettings } = await import('./realtime.js')
   await refetchSettings(user.id)
   await fetchStatsSummary()
 }
@@ -123,7 +124,6 @@ export async function refreshSettings() {
   if (!hasSupabase()) return
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
-  const { refetchSettings } = await import('./realtime.js')
   await refetchSettings(user.id)
   await fetchStatsSummary()
 }

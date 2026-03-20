@@ -13,6 +13,8 @@ const state = reactive({
   settings: null,
   sessions: [],
   statsSummary: null,
+  /** True when server stats RPC failed and fallback total count also failed — Home may show zeros misleadingly. */
+  statsLoadError: false,
   ready: false,
 })
 
@@ -158,6 +160,10 @@ export function isReady() {
   return state.ready
 }
 
+export function getStatsLoadError() {
+  return state.statsLoadError
+}
+
 async function fetchStatsSummaryFallbackCounts() {
   const uid = currentUserId
   if (!uid) return
@@ -207,11 +213,13 @@ async function fetchStatsSummaryFallbackCounts() {
     eligible_today,
     today_answered: 0,
   })
+  state.statsLoadError = Boolean(totalRes.error)
 }
 
 export async function fetchStatsSummary() {
   if (!hasSupabase() || !currentUserId) {
     state.statsSummary = null
+    state.statsLoadError = false
     return
   }
   const { data, error } = await supabase.rpc('vocabulary_stats_summary', {
@@ -227,6 +235,7 @@ export async function fetchStatsSummary() {
   }
   if (!error && raw && typeof raw === 'object') {
     state.statsSummary = normalizeStatsPayload(raw)
+    state.statsLoadError = false
     return
   }
   if (error) console.warn('vocabulary_stats_summary:', error)
@@ -344,6 +353,7 @@ export async function subscribeRealtime(userId) {
     // Keep store deterministic after sign-out / missing config.
     state.words = []
     state.statsSummary = null
+    state.statsLoadError = false
     state.sessions = []
     state.settings = {
       new_words_per_day: 25,
@@ -553,6 +563,7 @@ export function unsubscribeRealtime() {
     onlineHandler = null
   }
   state.statsSummary = null
+  state.statsLoadError = false
   currentUserId = null
 }
 

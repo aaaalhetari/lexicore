@@ -1,5 +1,19 @@
 <template>
   <div class="home-page">
+    <div v-if="statsLoadError" class="stats-warn card" role="status">
+      <p class="stats-warn-text">Dashboard numbers may be incomplete (couldn’t load full stats).</p>
+      <button type="button" class="btn btn-secondary stats-warn-retry" @click="retryStats">Retry</button>
+    </div>
+
+    <div v-if="showHomeEmpty" class="home-empty card">
+      <p class="home-empty-title">No vocabulary activity yet</p>
+      <p class="home-empty-hint">Start a session or open Word list once you’re signed in.</p>
+      <div class="home-empty-actions">
+        <button type="button" class="btn btn-primary" @click="$emit('start')">Start session</button>
+        <button type="button" class="btn btn-secondary" @click="$emit('words')">Word list</button>
+      </div>
+    </div>
+
     <div v-if="showStatsDashboard" class="dashboard">
       <section class="dash-hero" aria-label="Today's study queue">
         <div class="dash-hero-top">
@@ -11,12 +25,18 @@
           <span class="dash-hero-unit">cards</span>
         </div>
         <div class="dash-hero-split">
-          <div class="dash-pill dash-pill-rem">
+          <div
+            class="dash-pill dash-pill-rem"
+            title="Learning cards still due today (cycles not finished today)"
+          >
             <span class="dash-pill-n">{{ stats.eligibleToday ?? 0 }}</span>
             <span class="dash-pill-l">Remaining</span>
           </div>
           <span class="dash-plus" aria-hidden="true">+</span>
-          <div class="dash-pill dash-pill-new">
+          <div
+            class="dash-pill dash-pill-new"
+            title="New words queued for today’s session (from your daily quota)"
+          >
             <span class="dash-pill-n">{{ stats.newWord ?? 0 }}</span>
             <span class="dash-pill-l">New</span>
           </div>
@@ -24,16 +44,14 @@
       </section>
 
       <section class="dash-section" aria-label="Learning mix">
-        <div class="dash-section-head">
-          <span class="dash-section-title">Learning mix</span>
-        </div>
+        <span class="dash-section-title">Learning mix</span>
         <div
           class="mastery-bar"
           role="img"
-          :aria-label="`Mix: ${mixSegPct('beforeToday')}% before today, ${mixSegPct('learningToday')}% today`"
+          :aria-label="`Mix: ${mixBarPct.before}% before today, ${mixBarPct.today}% today`"
         >
-          <div class="mb-segment mb-mix-before" :style="{ width: mixSegPct('beforeToday') + '%' }" />
-          <div class="mb-segment mb-mix-today" :style="{ width: mixSegPct('learningToday') + '%' }" />
+          <div class="mb-segment mb-mix-before" :style="{ width: mixBarPct.before + '%' }" />
+          <div class="mb-segment mb-mix-today" :style="{ width: mixBarPct.today + '%' }" />
         </div>
         <div class="dash-mix-tiles">
           <div class="dash-tile">
@@ -49,7 +67,11 @@
         </div>
       </section>
 
-      <section class="dash-section dash-pool" aria-label="Word pool">
+      <section
+        class="dash-section dash-pool"
+        aria-label="Word pool"
+        title="Pre-generated waiting words vs your target (same as Settings → Pool)"
+      >
         <div class="dash-pool-inner">
           <div class="dash-pool-main">
             <div class="dash-pool-row">
@@ -68,7 +90,11 @@
               <div class="dash-pool-fill" :style="{ width: waitingBufferPct + '%' }" />
             </div>
           </div>
-          <div class="dash-pool-mastered" aria-label="Mastered words">
+          <div
+            class="dash-pool-mastered"
+            aria-label="Mastered words"
+            title="Words that completed all cycles"
+          >
             <span class="dash-pool-m-num">{{ stats.mastered ?? 0 }}</span>
             <span class="dash-pool-m-lbl">mastered</span>
           </div>
@@ -76,7 +102,6 @@
       </section>
     </div>
 
-    <!-- Action Cards -->
     <div class="home-actions">
       <div class="home-card" @click="$emit('start')">
         <div class="card-icon">🎯</div>
@@ -104,20 +129,26 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
-import { getStats } from '../store/data.js'
-import { fetchStatsSummary } from '../store/realtime.js'
+import { computed } from 'vue'
+import { hasSupabase } from '../lib/supabase.js'
+import { getStats, getStatsLoadError } from '../store/data.js'
+import { isReady, requestQuickResync } from '../store/realtime.js'
 
 defineEmits(['start', 'words', 'settings'])
 
-onMounted(() => {
-  fetchStatsSummary()
-})
-
 const stats = computed(() => getStats())
-const learningMixSum = computed(() => {
+const statsLoadError = computed(() => getStatsLoadError())
+
+function retryStats() {
+  requestQuickResync(0)
+}
+/** Bar widths: before-today vs learning-today only (excludes new_word). */
+const mixBarPct = computed(() => {
   const s = stats.value
-  return (s.learningBeforeToday ?? 0) + (s.learningToday ?? 0) + (s.newWord ?? 0)
+  const b = s.learningBeforeToday ?? 0
+  const t = s.learningToday ?? 0
+  const denom = Math.max(1, b + t)
+  return { before: Math.round((b / denom) * 100), today: Math.round((t / denom) * 100) }
 })
 const remainingPlusNewSum = computed(() => {
   const s = stats.value
@@ -132,21 +163,74 @@ const waitingBufferPct = computed(() => {
 /** Show dashboard if there is any vocabulary activity (totals from server or learning mix from loaded words). */
 const showStatsDashboard = computed(() => {
   const s = stats.value
-  const mix = learningMixSum.value
-  return (s.total ?? 0) > 0 || mix > 0 || (s.waiting ?? 0) > 0 || (s.mastered ?? 0) > 0
+  const activeMix =
+    (s.learningBeforeToday ?? 0) + (s.learningToday ?? 0) + (s.newWord ?? 0)
+  return (
+    (s.total ?? 0) > 0 ||
+    activeMix > 0 ||
+    (s.waiting ?? 0) > 0 ||
+    (s.mastered ?? 0) > 0
+  )
 })
-/** Width % for each slice of the learning-mix bar (before today + today only; excludes new_word). */
-function mixSegPct(part) {
-  const s = stats.value
-  const denom = Math.max(1, (s.learningBeforeToday ?? 0) + (s.learningToday ?? 0))
-  const v = part === 'beforeToday' ? (s.learningBeforeToday ?? 0) : (s.learningToday ?? 0)
-  return Math.round((v / denom) * 100)
-}
+
+const showHomeEmpty = computed(
+  () => hasSupabase() && isReady() && !showStatsDashboard.value
+)
 </script>
 
 <style scoped>
 .home-page {
   padding: calc(var(--sp) * 0.9) calc(var(--sp) * 0.9) calc(var(--tap) * 1.3);
+}
+
+.stats-warn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: var(--red-dim);
+  border-color: rgba(224, 92, 92, 0.35);
+}
+.stats-warn-text {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text2);
+  flex: 1 1 200px;
+}
+.stats-warn-retry {
+  flex-shrink: 0;
+}
+
+.home-empty {
+  padding: 20px 16px;
+  margin-bottom: 14px;
+  text-align: center;
+}
+.home-empty-title {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.home-empty-hint {
+  margin: 0 0 16px;
+  font-size: 0.88rem;
+  color: var(--text3);
+  line-height: 1.45;
+}
+.home-empty-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+@media (min-width: 420px) {
+  .home-empty-actions {
+    flex-direction: row;
+    justify-content: center;
+  }
 }
 
 /* ── Dashboard (unified) ─────────────── */
@@ -333,15 +417,14 @@ function mixSegPct(part) {
   color: var(--text3);
   margin-top: 4px;
 }
-.dash-section-head {
-  margin-bottom: 12px;
-}
 .dash-section-title {
+  display: block;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text3);
+  margin-bottom: 12px;
 }
 
 .mastery-bar {

@@ -35,9 +35,9 @@
 
 <script setup>
 import { computed } from 'vue'
-import { getData, importCSV, downloadCSV, downloadJSON } from '../store/data.js'
+import { getData, importCSV, downloadCSV } from '../store/data.js'
 
-const emit = defineEmits(['back'])
+defineEmits(['back'])
 
 const words = computed(() => getData().words)
 

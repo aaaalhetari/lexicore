@@ -4,7 +4,7 @@
     <div class="content">
       <Transition :name="transitionName" mode="out-in">
         <HomeScreen     v-if="screen === 'home'"     @start="goTo('session')" @words="goTo('words')" @settings="goTo('settings')" />
-        <SessionScreen  v-else-if="screen === 'session'"  @end="goTo('home')" @goToSettings="goTo('settings')" />
+        <SessionScreen  v-else-if="screen === 'session'"  @end="goTo('home')" @goToSettings="goTo('settings')" @goToWords="goTo('words')" />
         <SettingsScreen v-else-if="screen === 'settings'" @back="goTo('home')" />
         <WordListScreen v-else-if="screen === 'words'"    @back="goTo('home')" />
       </Transition>

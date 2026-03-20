@@ -18,20 +18,20 @@
     <!-- General -->
     <div v-if="tab === 'general'">
       <div class="settings-section card">
-        <h3>Waiting target</h3>
+        <h3>Pool &amp; daily pace</h3>
         <div class="setting-row">
           <div>
             <div class="setting-label">New words per day</div>
-            <div class="setting-desc">Words to study today. Bounded by [learning today, waiting target]. Reducing moves excess new_word → waiting.</div>
-            <div class="setting-counter">Home shows: <strong>New words {{ stats.newWord ?? 0 }}</strong> of <strong>{{ local.new_words_per_day ?? 25 }}</strong>/day · Learning today: {{ stats.newWordsInLearningToday ?? 0 }} (min)</div>
+            <div class="setting-desc">Daily cap for new cards. Same idea as the <strong>New</strong> pill on Home (quota vs what’s still new).</div>
+            <div class="setting-counter">Home: <strong>New {{ stats.newWord ?? 0 }}</strong> / <strong>{{ local.new_words_per_day ?? 25 }}</strong> per day · Learning today: {{ stats.newWordsInLearningToday ?? 0 }} (min)</div>
           </div>
           <input class="setting-input" type="number" :min="minNewWordsPerDay" :max="maxNewWordsPerDay" v-model.number="local.new_words_per_day" placeholder="25">
         </div>
         <div class="setting-row">
           <div>
-            <div class="setting-label">Waiting target</div>
-            <div class="setting-desc">Pre-generated words ready for study. Target shown as "X of Y" on home. When waiting &lt; target, server adds new words.</div>
-            <div class="setting-counter">Home shows: <strong>Waiting {{ stats.waiting ?? 0 }}</strong> of <strong>{{ local.waiting_target ?? 50 }}</strong> target</div>
+            <div class="setting-label">Pool target (waiting)</div>
+            <div class="setting-desc">Matches Home <strong>Pool</strong> (waiting / target). When waiting is below target, the server can add more pre-generated words.</div>
+            <div class="setting-counter">Home Pool: <strong>{{ stats.waiting ?? 0 }}</strong> / <strong>{{ local.waiting_target ?? 50 }}</strong></div>
           </div>
           <input class="setting-input" type="number" min="10" max="100" v-model.number="local.waiting_target" placeholder="50">
         </div>

@@ -1,5 +1,6 @@
 <template>
   <div :class="{ 'session-fill': phase === 'question' && currentWord }">
+    <div class="sr-only" aria-live="polite" aria-atomic="true">{{ feedbackLive }}</div>
     <!-- SESSION NOT STARTED -->
     <div v-if="phase === 'idle'" class="idle-msg">
       <p>Starting session...</p>
@@ -24,9 +25,12 @@
       <p v-else-if="stats.total === 0">
         Sign in (Settings → Account). Words are generated on the server. Try again later or add some manually in Word List.
       </p>
-      <p v-else>Come back tomorrow to continue with the next cycle.</p>
+      <p v-else>You’ve finished today’s queue. Come back tomorrow for the next cycle, or browse your words anytime.</p>
       <button v-if="stats.total === 0 && hasSupabase()" class="btn btn-secondary" style="margin-top:12px;width:100%" @click="$emit('goToSettings')">
         🔐 Sign in (Settings → Account)
+      </button>
+      <button v-if="hasSupabase()" class="btn btn-secondary" style="margin-top:12px;width:100%" @click="$emit('goToWords')">
+        📖 Word list
       </button>
       <button class="btn btn-primary" style="margin-top:12px;width:100%" @click="$emit('end')">Back Home</button>
     </div>
@@ -135,7 +139,7 @@ import Stage1 from './stage/Stage1.vue'
 import Stage2 from './stage/Stage2.vue'
 import Stage3 from './stage/Stage3.vue'
 
-const emit = defineEmits(['end', 'goToSettings'])
+const emit = defineEmits(['end', 'goToSettings', 'goToWords'])
 
 const sessionAudio = useAudio()
 provide('sessionAudio', sessionAudio)
@@ -164,6 +168,11 @@ const touchScrollState = ref({ scrollBox: null, startY: 0, startScrollTop: 0 })
 
 const stats = computed(() => getStats())
 const masteredCount = computed(() => stats.value.mastered ?? 0)
+
+const feedbackLive = computed(() => {
+  const t = feedback.value?.text
+  return typeof t === 'string' && t.trim() ? t : ''
+})
 
 const sessionStats = computed(() => {
   const ans = answeredCount.value ?? 0
@@ -363,8 +372,6 @@ async function onAnswered(isCorrect) {
       ? (wordSnapshot.stage3_explanations_correct ?? [])
       : (wordSnapshot.stage3_explanations_incorrect ?? [])
     const stored = explArr[0]
-    const sentArr = s3UseCorrect.value ? (wordSnapshot.stage3_correct ?? []) : (wordSnapshot.stage3_incorrect ?? [])
-    const sentence = (typeof sentArr[0] === 'string' ? sentArr[0] : String(sentArr[0] ?? '')).trim()
     if (stored) {
       stage3Explanation.value = stored
     } else {
