@@ -6,6 +6,16 @@
 
 **إصلاح منع التكرار (مهام `add_more_words` + إعادة المهام العالقة):** طبّق migration `20260321000000_fix_card_jobs_races_and_resets.sql` — يضيف فهرسًا فريدًا جزئيًا، قفلًا معاملاتيًا عند الإدراج، ويحدّ `reset_stuck_card_jobs` بحيث لا يعيد كل `processing` إلى `pending` في كل تشغيل (فقط المهام عالقة أكثر من ~45 دقيقة).
 
+**رسالة آخر فشل:** بعد `20260323000000_card_jobs_last_error.sql` يُعرض عمود `last_error` على `card_jobs` عند `status = 'failed'` (يملؤه `run-card-jobs` عبر `fail_card_job(..., p_message)`، ويُفرَّغ عند `complete_card_job` أو عند إعادة المهمة إلى `pending` عبر `reset_stuck_card_jobs`).
+
+```sql
+select id, user_id, job_type, status, last_error, processed_at
+from public.card_jobs
+where status = 'failed'
+order by processed_at desc
+limit 50;
+```
+
 ## 1) `v_card_jobs_active_duplicates`
 
 صفوف **pending / processing** تنتمي لمجموعة فيها **أكثر من صف** لنفس:

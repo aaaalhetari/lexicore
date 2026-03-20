@@ -65,7 +65,16 @@ Deno.serve(async (req) => {
         processed++
       } catch (e) {
         console.error("Job failed:", job.id, e)
-        await supabase.rpc("fail_card_job", { p_job_id: job.id })
+        const msg =
+          e instanceof Error
+            ? e.message
+            : typeof e === "object" && e !== null && "message" in e
+              ? String((e as { message: unknown }).message)
+              : String(e)
+        await supabase.rpc("fail_card_job", {
+          p_job_id: job.id,
+          p_message: msg.length > 2000 ? msg.slice(0, 2000) : msg,
+        })
       }
     }
 

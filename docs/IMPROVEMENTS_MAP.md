@@ -22,6 +22,7 @@
 |--------|---------|
 | عمود `processing_started_at`، فهرس فريد، منطق ملء الطابور (إضافة مهام الكلمات/المحتوى/الصوت)، `reset_stuck_card_jobs`، `claim_card_jobs`، `complete_card_job` / `fail_card_job`، إعادة بناء الـ view | `lexicore/supabase/migrations/20260321000000_fix_card_jobs_races_and_resets.sql` |
 | المصدر الوحيد للمنطق: `check_card_jobs_needed`؛ الاسم القديم في Postgres غلاف توافق فقط | `lexicore/supabase/migrations/20260322000000_check_card_jobs_needed_canonical.sql` |
+| عمود `last_error` و`fail_card_job` مع `p_message`؛ مسح الخطأ عند الإكمال أو إعادة `pending` | `lexicore/supabase/migrations/20260323000000_card_jobs_last_error.sql`؛ `lexicore/supabase/functions/run-card-jobs/index.ts` |
 
 ## 4. توفير TTS عند اكتمال الصوت + توافق النص مع الصوت
 
