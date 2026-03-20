@@ -70,3 +70,8 @@ npm run dev
 
 - Workflow: `.github/workflows/deploy.yml`
 - Secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+
+## 8. PWA
+
+- بعد البناء يُولَّد `manifest.webmanifest` و`sw.js` (Workbox)؛ التسجيل تلقائي مع تحديث الصفحة عند صدور إصدار جديد.
+- للتثبيت: من Chrome/Edge على الموقع المنشور → **Install app** / **تثبيت التطبيق** (المسار الأساسي `/lexicore/`).
