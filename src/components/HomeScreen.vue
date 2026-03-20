@@ -1,6 +1,5 @@
 <template>
   <div class="home-page">
-    <!-- Key stats: two groups (not only total — RPC may lag or fallback uses local words for mix) -->
     <div v-if="showStatsDashboard" class="dashboard">
       <section class="dash-hero" aria-label="Today's study queue">
         <div class="dash-hero-top">
@@ -27,16 +26,14 @@
       <section class="dash-section" aria-label="Learning mix">
         <div class="dash-section-head">
           <span class="dash-section-title">Learning mix</span>
-          <span class="dash-section-cap">{{ learningMixSum }} active</span>
         </div>
         <div
           class="mastery-bar"
           role="img"
-          :aria-label="`Mix chart: ${mixSegPct('beforeToday')}% before today, ${mixSegPct('learningToday')}% today, ${mixSegPct('newToday')}% new`"
+          :aria-label="`Mix: ${mixSegPct('beforeToday')}% before today, ${mixSegPct('learningToday')}% today`"
         >
           <div class="mb-segment mb-mix-before" :style="{ width: mixSegPct('beforeToday') + '%' }" />
           <div class="mb-segment mb-mix-today" :style="{ width: mixSegPct('learningToday') + '%' }" />
-          <div class="mb-segment mb-mix-new" :style="{ width: mixSegPct('newToday') + '%' }" />
         </div>
         <div class="dash-mix-tiles">
           <div class="dash-tile">
@@ -46,13 +43,8 @@
           </div>
           <div class="dash-tile">
             <span class="dash-tile-n">{{ stats.learningToday ?? 0 }}</span>
-            <span class="dash-tile-l">New words to learn today</span>
+            <span class="dash-tile-l">New words learned today</span>
             <span class="dash-tile-dot dtoday" aria-hidden="true" />
-          </div>
-          <div class="dash-tile">
-            <span class="dash-tile-n">{{ stats.newWord ?? 0 }}</span>
-            <span class="dash-tile-l">New words</span>
-            <span class="dash-tile-dot dnew" aria-hidden="true" />
           </div>
         </div>
       </section>
@@ -143,16 +135,11 @@ const showStatsDashboard = computed(() => {
   const mix = learningMixSum.value
   return (s.total ?? 0) > 0 || mix > 0 || (s.waiting ?? 0) > 0 || (s.mastered ?? 0) > 0
 })
-/** Width % for each slice of the learning-mix bar (denominator = sum of the three counts). */
+/** Width % for each slice of the learning-mix bar (before today + today only; excludes new_word). */
 function mixSegPct(part) {
   const s = stats.value
-  const denom = learningMixSum.value || 1
-  const v =
-    part === 'beforeToday'
-      ? (s.learningBeforeToday ?? 0)
-      : part === 'learningToday'
-        ? (s.learningToday ?? 0)
-        : (s.newWord ?? 0)
+  const denom = Math.max(1, (s.learningBeforeToday ?? 0) + (s.learningToday ?? 0))
+  const v = part === 'beforeToday' ? (s.learningBeforeToday ?? 0) : (s.learningToday ?? 0)
   return Math.round((v / denom) * 100)
 }
 </script>
@@ -347,10 +334,6 @@ function mixSegPct(part) {
   margin-top: 4px;
 }
 .dash-section-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
   margin-bottom: 12px;
 }
 .dash-section-title {
@@ -359,11 +342,6 @@ function mixSegPct(part) {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text3);
-}
-.dash-section-cap {
-  font-size: 0.72rem;
-  color: var(--text2);
-  font-family: 'JetBrains Mono', monospace;
 }
 
 .mastery-bar {
@@ -380,11 +358,10 @@ function mixSegPct(part) {
 }
 .mb-segment.mb-mix-before { background: var(--gold); }
 .mb-segment.mb-mix-today { background: var(--green); }
-.mb-segment.mb-mix-new { background: #5b9bd5; }
 
 .dash-mix-tiles {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
 }
 .dash-tile {
@@ -420,7 +397,6 @@ function mixSegPct(part) {
 }
 .dash-tile-dot.dbefore { background: var(--gold); }
 .dash-tile-dot.dtoday { background: var(--green); }
-.dash-tile-dot.dnew { background: #5b9bd5; }
 
 /* ── Action cards ─────────────── */
 .home-actions {
