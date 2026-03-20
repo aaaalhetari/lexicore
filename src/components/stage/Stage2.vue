@@ -68,7 +68,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import { ref, computed, onUnmounted, watch, inject } from 'vue'
 import SessionStatsBar from '../SessionStatsBar.vue'
 import StageCardToolbar from './StageCardToolbar.vue'
 import StagePlaceholderCard from './StagePlaceholderCard.vue'

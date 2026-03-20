@@ -1,5 +1,7 @@
 # LexiCore — دليل الإعداد والتشغيل
 
+**جذر المستودع على GitHub:** استنسخ المشروع وافتح مجلد التطبيق نفسه كجذر (حيث يوجد `package.json` و`.github/`). مجلد أعلى مثل `lexicore_vue` قد يكون فقط workspace محلي وليس المستودع الرسمي.
+
 ## 1. المتغيرات البيئية
 
 انسخ `.env.example` إلى `.env` واملأ:
@@ -20,7 +22,9 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here
 npx supabase db push
 ```
 
-أو نفّذ الملفات في `supabase/migrations/` بالترتيب من SQL Editor.
+أو نفّذ الملفات في `supabase/migrations/` بالترتيب من SQL Editor.  
+**هيكل الباكند وملاحظات SQL:** انظر [`supabase/README.md`](../supabase/README.md).  
+**خريطة التحسينات الأخيرة ومسارات الملفات:** [`docs/IMPROVEMENTS_MAP.md`](IMPROVEMENTS_MAP.md).
 
 ### Realtime
 **Database → Replication** → أضف جدول `vocabulary` إلى `supabase_realtime`.
@@ -49,9 +53,8 @@ npm run deploy:functions
 
 ## 5. جدولة التوليد
 
-- فعّل `pg_cron` و `pg_net` من Database → Extensions
-- الجدولة: migration `20240317000004` عند `db push`
-- التفاصيل: `docs/CRON_SETUP.md` | التسميات: `docs/SERVER_NAMING.md`
+- فعّل `pg_cron` و `pg_net` من Database → Extensions ثم طبّق الـ migrations (`db push`).
+- التفاصيل: [`docs/CRON_SETUP.md`](CRON_SETUP.md) · الدوال المعتمدة: [`docs/EDGE_FUNCTIONS.md`](EDGE_FUNCTIONS.md) · التسميات: [`docs/SERVER_NAMING.md`](SERVER_NAMING.md)
 
 ## 6. التشغيل المحلي
 

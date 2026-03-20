@@ -191,9 +191,62 @@ input:focus, textarea:focus, select:focus {
 /* Keep scrollbar small even on large screens */
 
 /* Fade transition */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease, transform 0.25s ease; }
-.fade-enter-from { opacity: 0; transform: translateY(8px); }
-.fade-leave-to { opacity: 0; transform: translateY(-4px); }
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.28s ease, transform 0.28s cubic-bezier(0.22, 0.68, 0, 1);
+  will-change: transform, opacity;
+}
+.fade-enter-from { opacity: 0; transform: translateY(10px) scale(0.995); }
+.fade-leave-to { opacity: 0; transform: translateY(-6px) scale(0.995); }
+
+/* Entering session: focus-in feel */
+.to-session-enter-active,
+.to-session-leave-active {
+  transition: opacity 0.34s ease, transform 0.34s cubic-bezier(0.2, 0.78, 0, 1);
+  will-change: transform, opacity, filter;
+}
+.to-session-enter-from {
+  opacity: 0;
+  transform: translateY(16px) scale(0.985);
+  filter: blur(2px);
+}
+.to-session-enter-to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+.to-session-leave-from {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+}
+.to-session-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.99);
+  filter: blur(1.5px);
+}
+
+/* Leaving session: gentle pull-back to home */
+.from-session-enter-active,
+.from-session-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22, 0.68, 0, 1);
+  will-change: transform, opacity;
+}
+.from-session-enter-from {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.99);
+}
+.from-session-enter-to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.from-session-leave-from {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.from-session-leave-to {
+  opacity: 0;
+  transform: translateY(14px) scale(0.986);
+}
 
 /* Slide-right: sub-page enters from right */
 .slide-right-enter-active { transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.22, 0.68, 0, 1); }

@@ -1,6 +1,5 @@
 /**
- * LexiCore v2: Realtime store - reactive mirror of server state
- * Subscribes to vocabulary table, updates word-by-word
+ * LexiCore — realtime store: reactive mirror of server state (vocabulary + settings)
  */
 
 import { reactive } from 'vue'
@@ -75,10 +74,10 @@ export function getStats() {
     const c3 = String(w.cycle_3_completed_date ?? '').slice(0, 10)
     return c1 !== todayStr && c2 !== todayStr && c3 !== todayStr
   }).length
-  const reservoir = state.settings?.waiting_target ?? 50
+  const waitingTarget = state.settings?.waiting_target ?? 50
   const newWordsPerDay = state.settings?.new_words_per_day ?? 25
   const newWordsInLearningToday = learningToday
-  return { total, mastered, learning, learningToday, learningBeforeToday, newWord, waiting, todayAnswered, eligibleToday, waiting_target: reservoir, newWordsPerDay, newWordsInLearningToday }
+  return { total, mastered, learning, learningToday, learningBeforeToday, newWord, waiting, todayAnswered, eligibleToday, waiting_target: waitingTarget, newWordsPerDay, newWordsInLearningToday }
 }
 
 export function today() {
@@ -169,6 +168,11 @@ function scheduleQuickResync(delay = 250) {
     resyncTimer = null
     resyncCurrentUser()
   }, delay)
+}
+
+/** Public hook: trigger a fast resync (useful when changing screens). */
+export function requestQuickResync(delay = 0) {
+  scheduleQuickResync(delay)
 }
 
 function wireFastResyncHooks() {

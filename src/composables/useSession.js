@@ -1,5 +1,5 @@
 /**
- * LexiCore v2: Session composable - backend-driven
+ * LexiCore — session composable (backend-driven)
  */
 
 import { ref, computed } from 'vue'

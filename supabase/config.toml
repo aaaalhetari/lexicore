@@ -1,8 +1,8 @@
 # LexiCore Edge Functions — B1-friendly naming
 # Stage 1: Definition | Stage 2: Gap-fill | Stage 3: Usage judgment
 
-# make-card-content: محتوى البطاقة
-# make_full_card | make_card_content | add_more_words | explain_sentence
+# make-card-content: محتوى البطاقة (add_more_words | make_card_content | make_full_card)
+# شرح جملة المرحلة 3: الدالة explain-card-sentence مباشرة من التطبيق — ليست عبر make-card-content
 [functions.make-card-content]
 verify_jwt = false
 
@@ -18,4 +18,9 @@ verify_jwt = false
 # add-card-sound: صوتيات البطاقة (batch only)
 # Invoked by: run-card-jobs, make-card-content
 [functions.add-card-sound]
+verify_jwt = false
+
+# explain-card-sentence: تفسير Stage 3 (يُستدعى من التطبيق مباشرة — ليس عبر make-card-content)
+# بدون هذا السطر الافتراضي verify_jwt=true فيرفض الطلب بـ 401 قبل تشغيل الكود
+[functions.explain-card-sentence]
 verify_jwt = false

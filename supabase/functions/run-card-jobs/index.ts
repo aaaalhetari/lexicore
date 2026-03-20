@@ -1,10 +1,14 @@
 // LexiCore: Process card generation jobs
-// Job types: add_more_words | make_card_content | add_card_sound
 // Invoked by: auto-add-cards
 
 import { createServiceClient } from "../_shared/supabase.ts"
 import { invokeEdgeFunction } from "../_shared/edge.ts"
 import { jsonErr, jsonOk, optionsOk } from "../_shared/http.ts"
+import {
+  JOB_ADD_CARD_SOUND,
+  JOB_ADD_MORE_WORDS,
+  JOB_MAKE_CARD_CONTENT,
+} from "../_shared/stages.ts"
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return optionsOk()
@@ -33,21 +37,21 @@ Deno.serve(async (req) => {
     let processed = 0
     for (const job of jobs) {
       try {
-        if (job.job_type === "add_more_words") {
+        if (job.job_type === JOB_ADD_MORE_WORDS) {
           await invokeEdgeFunction("make-card-content", {
             user_id: job.user_id,
-            job_type: "add_more_words",
+            job_type: JOB_ADD_MORE_WORDS,
             count: job.payload?.count ?? 20,
           })
-        } else if (job.job_type === "make_card_content") {
+        } else if (job.job_type === JOB_MAKE_CARD_CONTENT) {
           await invokeEdgeFunction("make-card-content", {
             user_id: job.user_id,
-            job_type: "make_card_content",
+            job_type: JOB_MAKE_CARD_CONTENT,
             word_id: job.payload?.word_id,
             word: job.payload?.word,
             stage: job.payload?.stage,
           })
-        } else if (job.job_type === "add_card_sound") {
+        } else if (job.job_type === JOB_ADD_CARD_SOUND) {
           await invokeEdgeFunction("add-card-sound", {
             user_id: job.user_id,
             word_id: job.payload?.word_id,

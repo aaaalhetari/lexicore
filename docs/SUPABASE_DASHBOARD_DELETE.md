@@ -8,7 +8,7 @@
 
 **المسار:**
 ```
-https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/functions
+https://supabase.com/dashboard/project/YOUR_PROJECT_REF/functions
 ```
 
 **الخطوات:**
@@ -24,7 +24,7 @@ https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/functions
 
 **المسار:**
 ```
-https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/storage/buckets
+https://supabase.com/dashboard/project/YOUR_PROJECT_REF/storage/buckets
 ```
 
 **الخطوات:**
@@ -38,7 +38,7 @@ https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/storage/buckets
 
 **المسار:**
 ```
-https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/editor
+https://supabase.com/dashboard/project/YOUR_PROJECT_REF/editor
 ```
 
 **الخطوات:**
@@ -52,7 +52,7 @@ https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/editor
 
 **المسار:**
 ```
-https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/database/cron-jobs
+https://supabase.com/dashboard/project/YOUR_PROJECT_REF/database/cron-jobs
 ```
 
 **الخطوات:**
@@ -68,12 +68,10 @@ https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/database/cron-jobs
 
 | العنصر | الرابط |
 |--------|--------|
-| Edge Functions | https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/functions |
-| Storage | https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/storage/buckets |
-| Table Editor | https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/editor |
-| SQL Editor | https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/sql/new |
-| Settings → API | https://supabase.com/dashboard/project/ryknnazacqzmasolhtkc/settings/api |
+| Edge Functions | https://supabase.com/dashboard/project/YOUR_PROJECT_REF/functions |
+| Storage | https://supabase.com/dashboard/project/YOUR_PROJECT_REF/storage/buckets |
+| Table Editor | https://supabase.com/dashboard/project/YOUR_PROJECT_REF/editor |
+| SQL Editor | `https://supabase.com/dashboard/project/YOUR_PROJECT_REF/sql/new` |
+| Settings → API | `https://supabase.com/dashboard/project/YOUR_PROJECT_REF/settings/api` |
 
----
-
-**ملاحظة:** استبدل `ryknnazacqzmasolhtkc` بمعرف مشروعك إذا كان مختلفاً.
+**معرف المشروع:** Settings → General → Reference ID.

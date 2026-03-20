@@ -1,46 +1,35 @@
-# جدولة التوليد التلقائي (Card Generation Cron)
+# جدولة التوليد التلقائي
 
-لتشغيل `auto-add-cards` كل ساعة — توليد محتوى البطاقات وصوتياتها في الخلفية.
+تشغيل دالة Edge **`auto-add-cards`** بشكل دوري لملء طابور `card_jobs` وتصريفه (محتوى + صوت).
 
-## مراحل التطبيق (App Stages)
+## الإعداد المتوقع في Supabase
+
+في **Dashboard → Integrations → Cron** (أو `select * from cron.job;`) يجب أن ترى على الأقل:
+
+| المهمة | الدور المعتاد |
+|--------|----------------|
+| **`lexicore-auto-add-cards`** | كل ساعة — `net.http_post` إلى `…/functions/v1/auto-add-cards` |
+| **`lexicore-daily-reset`** | يومي — `public.daily_reset` حسب منطقة زمنية المشروع |
+
+فعّل **`pg_cron`** و **`pg_net`** من **Database → Extensions** إن لزم.
+
+## المسارات والنشر
+
+1. طبّق الـ migrations بالترتيب: `npx supabase db push` (من مجلد `lexicore`).
+2. انشر الدوال: `npm run deploy:functions`.
+
+قائمة الدوال المعتمدة: [`docs/EDGE_FUNCTIONS.md`](EDGE_FUNCTIONS.md).
+
+## ماذا تفعل `auto-add-cards`؟
+
+1. تستدعي `check_card_jobs_needed` لكل مستخدم (تعبئة مهام عند الحاجة).
+2. تستدعي `run-card-jobs` في حلقة حتى يفرغ الطابور أو يتوقف التقدم.
+3. النتيجة: كلمات مع محتوى وصوت يُكمَل في الخلفية.
+
+## مراحل البطاقة (مرجع)
 
 | المرحلة | المحتوى |
-|---------|---------|
-| Stage 1 | Definition — اختيار التعريف الصحيح |
-| Stage 2 | Gap-fill — ملء الفراغ في الجملة |
-| Stage 3 | Usage judgment — الحكم على صحة الاستخدام |
-
-## الطريقة 1: cron-job.org (الأبسط)
-
-1. **انشر الدالة**:
-   ```bash
-   npx supabase functions deploy auto-add-cards --no-verify-jwt
-   ```
-
-2. **افتح** [cron-job.org](https://cron-job.org) وسجّل دخولاً (مجاني).
-
-3. **أنشئ مهمة جديدة**:
-   - **Title:** LexiCore Card Generation
-   - **URL:** `https://YOUR_PROJECT.supabase.co/functions/v1/auto-add-cards`
-   - **Method:** POST
-   - **Headers:** `Content-Type: application/json`, `Authorization: Bearer YOUR_ANON_KEY`
-   - **Schedule:** كل ساعة (`0 * * * *`)
-
-4. **احفظ** المهمة.
-
----
-
-## الطريقة 2: pg_cron داخل Supabase
-
-1. **فعّل** `pg_cron` و `pg_net` من Database → Extensions.
-2. **نفّذ** migration `20240317000004_schedule_refill_cron.sql` من SQL Editor.
-
----
-
-## ماذا يفعل auto-add-cards؟
-
-1. `check_refill_needed`: يضيف مهام لكل مستخدم
-   - **add_more_words**: توسيع مخزون الكلمات في الانتظار
-   - **add_card_sound**: صوتيات البطاقات (Stage 1+2+3)
-2. `run-card-jobs`: يعالج المهام (محتوى المراحل + صوتيات)
-3. النتيجة: كلمات جاهزة للدراسة مع محتوى وصوتيات كاملة
+|---------|--------|
+| Stage 1 | Definition |
+| Stage 2 | Gap-fill |
+| Stage 3 | Usage judgment |

@@ -8,7 +8,7 @@
 | 2 | Gap-fill | 5 جمل لملء الفراغ (___) |
 | 3 | Usage judgment | 5 جمل صحيحة + 5 خاطئة |
 
-## أنواع المهام (refill_jobs.job_type) — B1-friendly
+## أنواع المهام (`card_jobs.job_type`)
 
 | القيمة | المعنى | المرحلة |
 |--------|--------|---------|
@@ -20,7 +20,8 @@
 
 | الدالة | الدور |
 |--------|-------|
-| `make-card-content` | make_full_card، make_card_content، add_more_words، explain_sentence |
+| `make-card-content` | `make_full_card`، `make_card_content`، `add_more_words` |
+| `explain-card-sentence` | شرح جملة المرحلة 3 (Claude + حفظ في vocabulary) — يستدعيها العميل مباشرة |
 | `run-card-jobs` | معالجة مهام التوليد (queue) |
 | `auto-add-cards` | جدولة التوليد التلقائي (كل ساعة) |
 | `add-card-sound` | صوتيات البطاقة (batch only) |

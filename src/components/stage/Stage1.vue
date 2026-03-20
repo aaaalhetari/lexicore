@@ -67,7 +67,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['answered', 'skip', 'content-generated'])
 
-const { playWord, playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
+const { playStoredAudio, stopAudio, toggleMute, isMuted } = inject('sessionAudio') ?? useAudio()
 const answered = ref(false)
 const chosenIndex = ref(null)
 const generating = ref(false)
@@ -123,6 +123,22 @@ function playCardAudio() {
   if (props.word.audio_word) playStoredAudio(props.word.audio_word, 5)
 }
 
+function getCorrectDefinitionIndex() {
+  const defs = props.word?.stage1_definitions ?? []
+  return defs.findIndex((d) => d?.is_correct)
+}
+
+function playDefinitionAudio() {
+  if (isMuted.value || !props.word) return
+  const idx = getCorrectDefinitionIndex()
+  const urls = props.word?.audio_stage1_definitions ?? []
+  const url = idx >= 0 ? urls[idx] : null
+  stopAudio()
+  if (url) {
+    playStoredAudio(url, 2)
+  }
+}
+
 watch(
   () => props.sessionStats,
   (stats, prev) => {
@@ -170,7 +186,7 @@ function answer(index) {
   answered.value = true
   chosenIndex.value = index
   const choice = choices.value[index]
-  playWord(props.word, 5)
+  playDefinitionAudio()
   emit('answered', choice.wordId === props.word.id)
 }
 </script>

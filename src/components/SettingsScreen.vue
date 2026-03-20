@@ -104,10 +104,6 @@ const user = ref(null)
 const authError = ref('')
 const saving = ref(false)
 
-onMounted(async () => {
-  if (hasSync) user.value = await getCurrentUser()
-})
-
 // Local copy of settings for editing
 const local = reactive({
   new_words_per_day: 25,
@@ -118,11 +114,12 @@ const local = reactive({
 })
 
 onMounted(async () => {
+  if (hasSync) user.value = await getCurrentUser()
   await refreshSettings()
   snapshot.value = snapshotSettings()
   const s = getSettings()
   local.new_words_per_day = s.new_words_per_day ?? 25
-  local.waiting_target = s.waiting_target ?? s.reservoir ?? 10
+  local.waiting_target = s.waiting_target ?? 50
   for (let c = 1; c <= 3; c++) {
     for (let st = 1; st <= 3; st++) {
       local[`cycle_${c}`][`stage_${st}_required`] = s[`cycle_${c}`][`stage_${st}_required`]
@@ -146,7 +143,7 @@ function cancel() {
   const restored = restoreSettings(snapshot.value)
   if (restored) {
     local.new_words_per_day = restored.new_words_per_day ?? 25
-    local.waiting_target = restored.waiting_target ?? restored.reservoir ?? 10
+    local.waiting_target = restored.waiting_target ?? 50
     for (let c = 1; c <= 3; c++) {
       for (let st = 1; st <= 3; st++) {
         local[`cycle_${c}`][`stage_${st}_required`] = restored[`cycle_${c}`]?.[`stage_${st}_required`]

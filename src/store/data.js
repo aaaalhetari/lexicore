@@ -1,9 +1,8 @@
 /**
- * LexiCore v2: Lightweight data layer - all writes go to backend
- * Reads come from realtime store (realtime.js)
+ * LexiCore — data layer: writes to backend; reads via realtime store (realtime.js)
  */
 
-import { supabase, hasSupabase } from '../lib/supabase.js'
+import { supabase, hasSupabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase.js'
 import {
   getWords,
   getWordById,
@@ -80,21 +79,21 @@ export async function updateSettings(settings) {
   if (!user) return
 
   const newWordsPerDay = Number(settings.new_words_per_day) || 25
-  const reservoirVal = Number(settings.waiting_target) || 50
+  const waitingTarget = Number(settings.waiting_target) || 50
 
   const stats = getStats()
   const minNewWords = Math.max(1, stats.newWordsInLearningToday ?? 0)
   if (newWordsPerDay < minNewWords) {
     throw new Error(`New words per day cannot be less than ${minNewWords} (words in learning today)`)
   }
-  if (newWordsPerDay > reservoirVal) {
-    throw new Error(`New words per day cannot exceed ${reservoirVal} (waiting target)`)
+  if (newWordsPerDay > waitingTarget) {
+    throw new Error(`New words per day cannot exceed ${waitingTarget} (waiting target)`)
   }
 
   const { data: result, error } = await supabase.rpc('update_settings_with_trim', {
     p_user_id: user.id,
     p_new_words_per_day: newWordsPerDay,
-    p_waiting_target: reservoirVal,
+    p_waiting_target: waitingTarget,
     p_cycle_1: settings.cycle_1,
     p_cycle_2: settings.cycle_2,
     p_cycle_3: settings.cycle_3,
@@ -155,26 +154,58 @@ export async function makeFullCard(userId, wordId, word) {
   return { ok: true, content_updated: true }
 }
 
-/** Get AI explanation for Stage 3 (fallback when not in DB) */
-export async function explainSentence(userId, word, sentence, isCorrect) {
-  if (!hasSupabase()) return null
-  const { data, error } = await supabase.functions.invoke('explain-card-sentence', {
-    body: {
+/** Generate + persist AI explanation for Stage 3 (fetch: reads body on any HTTP status) */
+export async function explainSentence(userId, wordId, word, sentence, isCorrect) {
+  if (!hasSupabase()) throw new Error('Supabase required')
+  const wid = String(wordId ?? '').trim()
+  const base = (supabaseUrl || '').replace(/\/$/, '')
+  const url = `${base}/functions/v1/explain-card-sentence`
+  const { data: { session } } = await supabase.auth.getSession()
+  const bearer = session?.access_token ?? supabaseAnonKey
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${bearer}`,
+    },
+    body: JSON.stringify({
       user_id: userId || '',
+      word_id: wid,
       word,
       sentence,
       is_correct: isCorrect,
-    },
+    }),
   })
-  if (error) {
-    const msg = data?.error ?? error?.message ?? String(error)
-    throw new Error(msg)
-  }
-  return data?.explanation ?? null
-}
 
-/** Preload: no-op — audio comes from batch (stored URLs only) */
-export function preloadTTS(_word) {}
+  const rawText = await res.text()
+  let payload = null
+  try {
+    payload = rawText ? JSON.parse(rawText) : null
+  } catch {
+    throw new Error(
+      `Edge function response (${res.status}): ${rawText.slice(0, 400) || 'empty body'}`,
+    )
+  }
+
+  if (!res.ok) {
+    const msg =
+      (payload && typeof payload === 'object' && payload.error) ||
+      (payload && typeof payload === 'object' && payload.message) ||
+      rawText.slice(0, 400) ||
+      `HTTP ${res.status}`
+    throw new Error(String(msg))
+  }
+
+  if (payload && payload.ok === false) {
+    throw new Error(payload.error || 'AI explanation failed')
+  }
+  if (!payload?.saved) {
+    throw new Error(payload?.error || 'Explanation was generated but not saved')
+  }
+  return payload?.explanation ?? null
+}
 
 /** Export current progress as JSON (from realtime store) */
 export function downloadJSON() {
@@ -281,7 +312,7 @@ export function restoreSettings(snapshot) {
   }
 }
 
-/** Import JSON - inserts words into vocabulary (legacy format) */
+/** Import JSON from progress export (words array) */
 export async function importJSON(jsonStr) {
   const data = JSON.parse(jsonStr)
   const words = data.words ?? []

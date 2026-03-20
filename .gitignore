@@ -4,3 +4,6 @@ dist
 .env.local
 *.local
 supabase/.temp
+
+.DS_Store
+Thumbs.db

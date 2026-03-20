@@ -1,5 +1,5 @@
 /**
- * LexiCore v2: Audio playback — stored URLs only (batch-generated)
+ * LexiCore — audio playback from stored URLs (server-generated)
  * - playStoredAudio: play from stored URL
  * - playWord: word pronunciation from stored audio_word
  */
@@ -101,5 +101,5 @@ export function useAudio() {
     if (isMuted.value) stopAudio()
   }
 
-  return { playWord, playStoredAudio, playAudioUrl, stopAudio, toggleMute, isMuted, audioRef }
+  return { playWord, playStoredAudio, stopAudio, toggleMute, isMuted, audioRef }
 }

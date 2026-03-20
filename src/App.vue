@@ -23,7 +23,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, provide } from 'vue'
-import { subscribeRealtime, unsubscribeRealtime } from './store/realtime.js'
+import { subscribeRealtime, unsubscribeRealtime, requestQuickResync } from './store/realtime.js'
 import { getCurrentUser } from './store/sync.js'
 import { ensureSchema, assignDailyQuota } from './store/data.js'
 import HomeScreen from './components/HomeScreen.vue'
@@ -41,7 +41,11 @@ const subPages = new Set(['settings', 'words'])
 
 function goTo(name) {
   const from = screen.value
-  if (subPages.has(name) && !subPages.has(from)) {
+  if (name === 'session' && from !== 'session') {
+    transitionName.value = 'to-session'
+  } else if (from === 'session' && name !== 'session') {
+    transitionName.value = 'from-session'
+  } else if (subPages.has(name) && !subPages.has(from)) {
     transitionName.value = 'slide-right'
   } else if (!subPages.has(name) && subPages.has(from)) {
     transitionName.value = 'slide-left'
@@ -49,6 +53,10 @@ function goTo(name) {
     transitionName.value = 'fade'
   }
   screen.value = name
+  if (name === 'home') {
+    // Ensure Home stats reflect the latest backend state without manual refresh.
+    requestQuickResync(0)
+  }
 }
 
 onMounted(async () => {

@@ -127,9 +127,10 @@ import { Mousewheel } from 'swiper/modules'
 import 'swiper/css'
 import { useSession } from '../composables/useSession.js'
 import { useAudio } from '../composables/useAudio.js'
-import { getData, getStats, downloadJSON, preloadTTS, explainSentence } from '../store/data.js'
+import { getData, getStats, downloadJSON, explainSentence } from '../store/data.js'
 import { hasSupabase } from '../lib/supabase.js'
 import { getCurrentUser } from '../store/sync.js'
+import { requestQuickResync, refetchWord } from '../store/realtime.js'
 import Stage1 from './stage/Stage1.vue'
 import Stage2 from './stage/Stage2.vue'
 import Stage3 from './stage/Stage3.vue'
@@ -153,7 +154,6 @@ const nextLock     = ref(false) // prevents double-click Continue / racing cards
 const progressDisplay = ref(null) // { count, required } when showing feedback — avoids realtime delay
 const stage3Explanation = ref('')
 const stage3ExplanationLoading = ref(false)
-const questionKey  = ref(0)
 const contentRefreshKey = ref(0)
 const swiperRef = ref(null)
 const s3UseCorrect = ref(true)
@@ -288,8 +288,6 @@ function onSlideChange(swiper) {
   if (hadFeedback && realIndex > learningTargetIndex.value) {
     learningTargetIndex.value = realIndex
   }
-  preloadTTS(currentWord.value)
-  questionKey.value++
   if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
   nextTick(() => { nextLock.value = false })
 }
@@ -311,7 +309,6 @@ onMounted(async () => {
     const result = await startSession()
     if (result === 'done_today' || result === 'no_words') { phase.value = 'done_today'; return }
     if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
-    preloadTTS(currentWord.value)
     phase.value = 'question'
   } catch (err) {
     console.error('Session start failed:', err)
@@ -334,6 +331,8 @@ async function onAnswered(isCorrect) {
     answeringLock.value = false
   }
   if (!result) return
+  // Keep global stats in sync immediately after each answer.
+  requestQuickResync(120)
   // إذا انتهت كل الكلمات، انتقل مباشرة لشاشة النهاية
   if (remaining.value === 0) {
     phase.value = 'end'
@@ -355,7 +354,6 @@ async function onAnswered(isCorrect) {
       stage3Explanation.value = getFallbackExplanation(wordSnapshot, s3UseCorrect.value)
     }
   }
-  const settings = getData().settings
   switch (result.type) {
     case 'correct':
       progressDisplay.value = { count: result.count ?? (wordSnapshot.consecutive_correct + 1), required: result.required ?? required.value }
@@ -404,23 +402,31 @@ function getFallbackExplanation(wordObj, sentenceIsCorrect) {
     : `The sentence is incorrect: "${w}" is misused here — check part of speech, meaning, and grammar.`
 }
 
-async function retryExplanation() {
-  const w = displayWord.value
-  if (!w || w.stage !== 3 || stage3ExplanationLoading.value) return
-  const sentArr = s3UseCorrect.value ? (w.stage3_correct ?? []) : (w.stage3_incorrect ?? [])
-  const sentence = (typeof sentArr[0] === 'string' ? sentArr[0] : String(sentArr[0] ?? '')).trim()
+async function retryExplanation(payload) {
+  const payloadWord = payload?.word ?? payload
+  const w = displayWord.value ?? payloadWord ?? currentWord.value
+  if (!w || stage3ExplanationLoading.value) return
+  const isCorrect = typeof payload?.isCorrect === 'boolean' ? payload.isCorrect : s3UseCorrect.value
+  const sentArr = isCorrect ? (w.stage3_correct ?? []) : (w.stage3_incorrect ?? [])
+  const candidateFromPayload = String(payload?.sentence ?? '').trim()
+  const sentenceFromWord = (typeof sentArr[0] === 'string' ? sentArr[0] : String(sentArr[0] ?? '')).trim()
+  const sentence = candidateFromPayload || sentenceFromWord
   if (!sentence) {
-    stage3Explanation.value = getFallbackExplanation(w, s3UseCorrect.value)
+    stage3Explanation.value = getFallbackExplanation(w, isCorrect)
     return
   }
   stage3ExplanationLoading.value = true
   stage3Explanation.value = ''
   try {
     const user = currentUser.value ?? (await getCurrentUser())
-    const text = user ? await explainSentence(user.id, w.word ?? '', sentence, s3UseCorrect.value) : null
-    stage3Explanation.value = text ?? getFallbackExplanation(w, s3UseCorrect.value)
-  } catch {
-    stage3Explanation.value = getFallbackExplanation(w, s3UseCorrect.value)
+    if (!user?.id) {
+      throw new Error('Please sign in first')
+    }
+    const text = await explainSentence(user.id, w.id, w.word ?? '', sentence, isCorrect)
+    stage3Explanation.value = text ?? getFallbackExplanation(w, isCorrect)
+    await refetchWord(w.id, user.id)
+  } catch (err) {
+    stage3Explanation.value = `AI explanation failed to save: ${err?.message ?? 'Unknown error'}`
   } finally {
     stage3ExplanationLoading.value = false
   }
@@ -442,8 +448,6 @@ function onSkip() {
   if (swiperRef.value && !swiperRef.value.destroyed) {
     swiperRef.value.slideTo(displayIndex.value)
   }
-  preloadTTS(currentWord.value)
-  questionKey.value++
   if (currentWord.value?.stage === 3) s3UseCorrect.value = getS3Type()
   phase.value = 'question'
   nextTick(() => { nextLock.value = false })
@@ -543,25 +547,6 @@ function onSkip() {
 /* البطاقة المستهدفة واضحة، الباقي أغمق قليلاً */
 .session-swiper :deep(.swiper-slide:not(.slide-target)) {
   opacity: 0.6;
-}
-
-/* Slide card transition — smooth professional animation */
-.slide-card-enter-active,
-.slide-card-leave-active {
-  transition: all 0.35s cubic-bezier(0.32, 0.72, 0, 1);
-}
-.slide-card-enter-from {
-  opacity: 0;
-  transform: translateX(60px);
-}
-.slide-card-leave-to {
-  opacity: 0;
-  transform: translateX(-60px);
-}
-.slide-card-enter-to,
-.slide-card-leave-from {
-  opacity: 1;
-  transform: translateX(0);
 }
 
 .big-emoji { font-size: calc(var(--icon) * 2.5); margin-bottom: calc(var(--sp) * 1); }

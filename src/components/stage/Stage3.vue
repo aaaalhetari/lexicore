@@ -55,7 +55,10 @@
         <button
           v-if="!stage3ExplanationLoading"
           class="btn-ai-explain"
-          @click.stop="emit('retry-explanation')"
+          @pointerdown.stop
+          @touchstart.stop
+          @touchend.stop
+          @click.stop.prevent="onRetryExplanationClick"
           title="Get AI explanation"
         >
           ☁️ AI explain
@@ -67,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, inject } from 'vue'
+import { ref, computed, onUnmounted, watch, inject } from 'vue'
 import SessionStatsBar from '../SessionStatsBar.vue'
 import StageCardToolbar from './StageCardToolbar.vue'
 import StagePlaceholderCard from './StagePlaceholderCard.vue'
@@ -205,6 +208,14 @@ function answer(val) {
   answered.value = true
   playWord(props.word, 5)
   emit('answered', val === props.useCorrect)
+}
+
+function onRetryExplanationClick() {
+  emit('retry-explanation', {
+    word: props.word,
+    sentence: sentence.value,
+    isCorrect: props.useCorrect,
+  })
 }
 </script>
 

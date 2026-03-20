@@ -1,5 +1,6 @@
 // LexiCore: Card audio — batch only (word + Stage 1+2+3)
 // { user_id, word_id, word } -> full card audio, update vocabulary
+// Skips OpenAI TTS for slots that already have a stored URL (idempotent jobs / already complete).
 
 import { createServiceClient } from "../_shared/supabase.ts"
 import { jsonErr, jsonOk, optionsOk } from "../_shared/http.ts"
@@ -15,6 +16,12 @@ function sanitizeWord(word: string): string {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 40) || "word"
+}
+
+function isNonEmptyUrl(v: unknown): boolean {
+  if (typeof v !== "string") return false
+  const s = v.trim()
+  return s.length > 8 && /^https?:\/\//i.test(s)
 }
 
 async function generateTTS(text: string): Promise<ArrayBuffer> {
@@ -47,7 +54,9 @@ Deno.serve(async (req) => {
 
     const { data: vocab, error: vocabErr } = await supabase
       .from("vocabulary")
-      .select("stage1_definitions, stage2_sentences, stage3_correct, stage3_incorrect")
+      .select(
+        "stage1_definitions, stage2_sentences, stage3_correct, stage3_incorrect, audio_word, audio_stage1_definitions, audio_stage2_sentences, audio_stage3_correct, audio_stage3_incorrect",
+      )
       .eq("id", word_id)
       .eq("user_id", user_id)
       .single()
@@ -59,32 +68,75 @@ Deno.serve(async (req) => {
     const correct = (vocab.stage3_correct ?? []) as string[]
     const incorrect = (vocab.stage3_incorrect ?? []) as string[]
 
+    const existingWordUrl = vocab.audio_word
+    const ex1 = (vocab.audio_stage1_definitions ?? []) as unknown[]
+    const ex2 = (vocab.audio_stage2_sentences ?? []) as unknown[]
+    const ex3c = (vocab.audio_stage3_correct ?? []) as unknown[]
+    const ex3i = (vocab.audio_stage3_incorrect ?? []) as unknown[]
+
+    const wordText = (word ?? "").trim()
+
+    let needTts = false
+    if (wordText && !isNonEmptyUrl(existingWordUrl)) needTts = true
+    for (let i = 0; i < defs.length; i++) {
+      const text = (defs[i]?.definition ?? "").trim()
+      if (text && !isNonEmptyUrl(ex1[i])) needTts = true
+    }
+    for (let i = 0; i < sents.length; i++) {
+      const text = (sents[i]?.sentence ?? "").trim()
+      if (text && !isNonEmptyUrl(ex2[i])) needTts = true
+    }
+    for (let i = 0; i < correct.length; i++) {
+      const text = (correct[i] ?? "").trim()
+      if (text && !isNonEmptyUrl(ex3c[i])) needTts = true
+    }
+    for (let i = 0; i < incorrect.length; i++) {
+      const text = (incorrect[i] ?? "").trim()
+      if (text && !isNonEmptyUrl(ex3i[i])) needTts = true
+    }
+
+    if (!needTts) {
+      return jsonOk({ generated: 0, skipped: "audio_complete", word_id })
+    }
+
     let generated = 0
-    let audioWordUrl: string | null = null
+    let audioWordUrl: string | null = isNonEmptyUrl(existingWordUrl)
+      ? String(existingWordUrl).trim()
+      : null
     const audioStage1: string[] = []
     const audioStage2: string[] = []
     const audioStage3Correct: string[] = []
     const audioStage3Incorrect: string[] = []
 
     // 1. Word pronunciation
-    const wordText = (word ?? "").trim()
     if (wordText) {
-      const buf = await generateTTS(wordText)
-      const path = getStoragePath(word, 0, 0)
-      await supabase.storage.from("lexicore-audio").upload(path, buf, {
-        contentType: "audio/mpeg",
-        upsert: true,
-      })
-      const { data: urlData } = supabase.storage.from("lexicore-audio").getPublicUrl(path)
-      audioWordUrl = urlData.publicUrl
-      generated++
-      await sleep(300)
+      if (audioWordUrl) {
+        /* reused */
+      } else {
+        const buf = await generateTTS(wordText)
+        const path = getStoragePath(word, 0, 0)
+        await supabase.storage.from("lexicore-audio").upload(path, buf, {
+          contentType: "audio/mpeg",
+          upsert: true,
+        })
+        const { data: urlData } = supabase.storage.from("lexicore-audio").getPublicUrl(path)
+        audioWordUrl = urlData.publicUrl
+        generated++
+        await sleep(300)
+      }
     }
 
     // 2. Stage1 definitions
     for (let i = 0; i < defs.length; i++) {
       const text = (defs[i]?.definition ?? "").trim()
-      if (!text) { audioStage1.push(""); continue }
+      if (!text) {
+        audioStage1.push("")
+        continue
+      }
+      if (isNonEmptyUrl(ex1[i])) {
+        audioStage1.push(String(ex1[i]).trim())
+        continue
+      }
       const buf = await generateTTS(text)
       const path = getStoragePath(word, 1, i)
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
@@ -101,7 +153,14 @@ Deno.serve(async (req) => {
     // 3. Stage2 sentences
     for (let i = 0; i < sents.length; i++) {
       const text = (sents[i]?.sentence ?? "").trim()
-      if (!text) { audioStage2.push(""); continue }
+      if (!text) {
+        audioStage2.push("")
+        continue
+      }
+      if (isNonEmptyUrl(ex2[i])) {
+        audioStage2.push(String(ex2[i]).trim())
+        continue
+      }
       const buf = await generateTTS(text)
       const path = getStoragePath(word, 2, i)
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
@@ -118,7 +177,14 @@ Deno.serve(async (req) => {
     // 4. Stage3 correct
     for (let i = 0; i < correct.length; i++) {
       const text = (correct[i] ?? "").trim()
-      if (!text) { audioStage3Correct.push(""); continue }
+      if (!text) {
+        audioStage3Correct.push("")
+        continue
+      }
+      if (isNonEmptyUrl(ex3c[i])) {
+        audioStage3Correct.push(String(ex3c[i]).trim())
+        continue
+      }
       const buf = await generateTTS(text)
       const path = getStoragePath(word, 3, i, "correct")
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
@@ -135,7 +201,14 @@ Deno.serve(async (req) => {
     // 5. Stage3 incorrect
     for (let i = 0; i < incorrect.length; i++) {
       const text = (incorrect[i] ?? "").trim()
-      if (!text) { audioStage3Incorrect.push(""); continue }
+      if (!text) {
+        audioStage3Incorrect.push("")
+        continue
+      }
+      if (isNonEmptyUrl(ex3i[i])) {
+        audioStage3Incorrect.push(String(ex3i[i]).trim())
+        continue
+      }
       const buf = await generateTTS(text)
       const path = getStoragePath(word, 3, i, "incorrect")
       await supabase.storage.from("lexicore-audio").upload(path, buf, {
@@ -149,7 +222,7 @@ Deno.serve(async (req) => {
     }
     while (audioStage3Incorrect.length < incorrect.length) audioStage3Incorrect.push("")
 
-    // Single update with all audio
+    // Single update with all audio (only when we produced new clips or need to persist reused arrays)
     const updates: Record<string, unknown> = {}
     if (audioWordUrl) updates.audio_word = audioWordUrl
     if (audioStage1.length) updates.audio_stage1_definitions = audioStage1
